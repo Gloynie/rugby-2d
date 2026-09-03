@@ -1,0 +1,38 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Rugby 2D: play (dev server)",
+      "type": "shell",
+      "command": "npm run dev",
+      "isBackground": true,
+      "problemMatcher": [],
+      "group": { "kind": "build", "isDefault": true },
+      "presentation": { "reveal": "always", "panel": "dedicated" }
+    },
+    {
+      "label": "Rugby 2D: install dependencies",
+      "type": "shell",
+      "command": "npm install",
+      "problemMatcher": []
+    },
+    {
+      "label": "Rugby 2D: start database (Docker)",
+      "type": "shell",
+      "command": "docker compose up -d",
+      "problemMatcher": []
+    },
+    {
+      "label": "Rugby 2D: create database tables",
+      "type": "shell",
+      "command": "npx drizzle-kit push",
+      "problemMatcher": []
+    },
+    {
+      "label": "Rugby 2D: production build + start",
+      "type": "shell",
+      "command": "npm run build && npm start",
+      "problemMatcher": []
+    }
+  ]
+}

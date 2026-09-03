@@ -1,0 +1,19 @@
+# Optional: PostgreSQL for accounts, saved results and competitions.
+# Start with:  docker compose up -d      Stop with:  docker compose down
+# Matches the game's default connection: postgresql://postgres:postgres@127.0.0.1:5432/app_db
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: rugby2d-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: app_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - rugby2d-pgdata:/var/lib/postgresql/data
+
+volumes:
+  rugby2d-pgdata:

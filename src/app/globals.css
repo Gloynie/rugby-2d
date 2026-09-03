@@ -1,0 +1,159 @@
+@import "tailwindcss";
+
+@font-face {
+  font-family: "PressStart2P";
+  src: url("/fonts/PressStart2P.ttf") format("truetype");
+  font-display: swap;
+}
+@font-face {
+  font-family: "VT323";
+  src: url("/fonts/VT323.ttf") format("truetype");
+  font-display: swap;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  height: 100%;
+  background: #000;
+  overflow: hidden;
+}
+
+body {
+  font-family: "VT323", ui-monospace, "Courier New", monospace;
+  font-size: 20px;
+  line-height: 1.15;
+  color: #fff;
+  -webkit-font-smoothing: none;
+}
+
+.font-pixel {
+  font-family: "PressStart2P", ui-monospace, "Courier New", monospace;
+}
+.font-body {
+  font-family: "VT323", ui-monospace, "Courier New", monospace;
+}
+.pixelated {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+.scanlines {
+  background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.22) 0px, rgba(0, 0, 0, 0.22) 1px, transparent 1px, transparent 3px);
+}
+.vignette {
+  background: radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.75) 100%);
+}
+
+.px-panel {
+  background: rgba(8, 12, 24, 0.9);
+  border: 2px solid #334155;
+  box-shadow: 4px 4px 0 #000;
+}
+.px-btn {
+  font-family: "PressStart2P", ui-monospace, monospace;
+  font-size: 10px;
+  line-height: 1;
+  text-transform: uppercase;
+  padding: 11px 14px;
+  border: 2px solid #000;
+  box-shadow: 3px 3px 0 #000;
+  background: #1e293b;
+  color: #fff;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform 0.05s, filter 0.1s;
+}
+.px-btn:hover:not(:disabled) {
+  filter: brightness(1.2);
+}
+.px-btn:active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 #000;
+}
+.px-btn.primary {
+  background: #facc15;
+  color: #000;
+}
+.px-btn.danger {
+  background: #7f1d1d;
+}
+.px-btn.selected {
+  outline: 2px solid #facc15;
+  outline-offset: 2px;
+}
+.px-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.px-input {
+  width: 100%;
+  background: #000;
+  border: 2px solid #334155;
+  padding: 8px 10px;
+  color: #fff;
+  font-family: "VT323", ui-monospace, monospace;
+  font-size: 22px;
+  outline: none;
+}
+.px-input:focus {
+  border-color: #facc15;
+}
+.tile {
+  position: relative;
+  overflow: hidden;
+  border: 2px solid rgba(255, 255, 255, 0.16);
+  background: rgba(8, 12, 24, 0.72);
+  cursor: pointer;
+  transition: transform 0.12s, border-color 0.12s, box-shadow 0.12s;
+  text-align: left;
+}
+.tile.selected,
+.tile:hover {
+  border-color: #facc15;
+  box-shadow: 0 0 0 2px #facc15, 6px 6px 0 #000;
+  transform: translateY(-2px);
+}
+.tile.small-selected {
+  border-color: #facc15;
+  box-shadow: 0 0 0 2px #facc15;
+}
+.scroll {
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #facc15 #0b1020;
+}
+.blink {
+  animation: blink 1s steps(2, start) infinite;
+}
+@keyframes blink {
+  to {
+    visibility: hidden;
+  }
+}
+.slide-in {
+  animation: slideIn 0.22s ease-out both;
+}
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.marquee {
+  animation: marquee 18s linear infinite;
+}
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
