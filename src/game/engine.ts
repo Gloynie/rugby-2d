@@ -198,6 +198,10 @@ export class RugbyEngine {
   touchJudges: [RefereeState, RefereeState];
   tmo: TMOState;
   spectatorSpeed = 1;
+  playerLockPosition: number | null = null; // Position to lock control (Be a Pro mode)
+  userTries = 0;
+  userTackles = 0;
+  userPasses = 0;
 
   constructor(cfg: MatchConfig) {
     this.userTeam = cfg.userTeam;
@@ -873,6 +877,16 @@ export class RugbyEngine {
   private updateControl(input: InputFrame): void {
     if (this.userTeam === null) return;
     const ut = this.userTeam;
+    
+    // --- New feature: Player Lock / Be a Pro mode ---
+    if (this.playerLockPosition !== null) {
+      const lockedPlayer = this.pl(ut, this.playerLockPosition);
+      if (lockedPlayer) {
+        this.controlled = lockedPlayer.id;
+        return;
+      }
+    }
+
     const b = this.ball;
     if (b.carrier !== null && this.players[b.carrier].team === ut) {
       this.controlled = b.carrier;
@@ -1234,6 +1248,12 @@ export class RugbyEngine {
       if (p.id === this.controlled) this.say("No support there!", "", "#fbbf24", 1);
       return;
     }
+
+    // Track player career passes
+    if (this.playerLockPosition !== null && this.userTeam === p.team && p.number === this.playerLockPosition) {
+      this.userPasses++;
+    }
+
     p.anim = "pass";
     p.animUntil = this.time + 0.35;
     const t = p.team;
@@ -1578,6 +1598,9 @@ export class RugbyEngine {
         "try",
         () => {
           // Confirm TMO: award try normally
+          if (this.playerLockPosition !== null && this.userTeam === t && p.number === this.playerLockPosition) {
+            this.userTries++;
+          }
           this.score[t] += 5;
           this.tries[t]++;
           this.events.push({ minute: this.gameMinute(), team: t, type: "try", player: p.name, points: 5 });
@@ -1602,6 +1625,9 @@ export class RugbyEngine {
       return;
     }
 
+    if (this.playerLockPosition !== null && this.userTeam === t && p.number === this.playerLockPosition) {
+      this.userTries++;
+    }
     this.score[t] += 5;
     this.tries[t]++;
     this.events.push({ minute: this.gameMinute(), team: t, type: "try", player: p.name, points: 5 });
@@ -1730,6 +1756,11 @@ export class RugbyEngine {
         this.restart = { kind: "scrum", team: injuredPlayer.team, x: injuredPlayer.pos.x, y: injuredPlayer.pos.y };
       }
       return;
+    }
+
+    // Track player career tackles
+    if (this.playerLockPosition !== null && this.userTeam === t.team && t.number === this.playerLockPosition) {
+      this.userTackles++;
     }
 
     this.lastTackle = { tackler: t.id, carrier: c.id };

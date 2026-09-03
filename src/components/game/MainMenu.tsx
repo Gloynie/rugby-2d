@@ -22,6 +22,7 @@ export default function MainMenu({ user, go }: { user: SessionUser | null; go: (
     { id: "profile", title: user ? "My career" : "Sign in", sub: user ? "Record, history & competitions" : "Save results and run tournaments", screen: { name: "profile" } },
     { id: "howto", title: "How to play", sub: "Laws of the game & tips", screen: { name: "howto" } },
     { id: "career", title: "Manager mode", sub: "Run a club through a full season", screen: { name: "career" } },
+    { id: "player-career", title: "Player Career", sub: "Create a customized pro, earn XP and upgrade your rating", screen: { name: "player-career-start" } },
   ];
   const [sel, setSel] = useState(0);
   const tilesCount = tiles.length;
@@ -148,15 +149,29 @@ export default function MainMenu({ user, go }: { user: SessionUser | null; go: (
           </div>
         </button>
 
-        <button className={`${cls(6)} col-span-12 min-h-[118px]`} onMouseEnter={() => setSel(6)} onClick={() => go(tiles[6].screen)}>
+        <button className={`${cls(6)} col-span-12 min-h-[118px] md:col-span-6`} onMouseEnter={() => setSel(6)} onClick={() => go(tiles[6].screen)}>
           <div className="relative flex items-center gap-6 p-5">
             <div className="grid h-16 w-16 place-items-center border-4 border-yellow-300/60 bg-yellow-300/10">
-              <span className="font-pixel text-xl">MGR</span>
+              <span className="font-pixel text-lg">MGR</span>
             </div>
             <div className="flex-1">
               <Kicker>New</Kicker>
-              <h3 className="font-pixel mt-1 text-lg uppercase leading-relaxed">{tiles[6].title}</h3>
+              <h3 className="font-pixel mt-1 text-sm uppercase leading-relaxed">{tiles[6].title}</h3>
               <p className="text-slate-300">{tiles[6].sub}</p>
+            </div>
+            <span className="font-pixel text-xs text-yellow-300">→</span>
+          </div>
+        </button>
+
+        <button className={`${cls(7)} col-span-12 min-h-[118px] md:col-span-6`} onMouseEnter={() => setSel(7)} onClick={() => go(tiles[7].screen)}>
+          <div className="relative flex items-center gap-6 p-5">
+            <div className="grid h-16 w-16 place-items-center border-4 border-yellow-300/60 bg-yellow-300/10">
+              <span className="font-pixel text-lg">PRO</span>
+            </div>
+            <div className="flex-1">
+              <Kicker>New</Kicker>
+              <h3 className="font-pixel mt-1 text-sm uppercase leading-relaxed">{tiles[7].title}</h3>
+              <p className="text-slate-300">{tiles[7].sub}</p>
             </div>
             <span className="font-pixel text-xs text-yellow-300">→</span>
           </div>

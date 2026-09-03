@@ -70,6 +70,26 @@ export const careers = pgTable("careers", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const playerCareers = pgTable("player_careers", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  playerName: varchar("player_name", { length: 64 }).notNull(),
+  position: integer("position").notNull(), // 1..15 shirt position
+  teamId: varchar("team_id", { length: 64 }).notNull(),
+  competitionId: varchar("competition_id", { length: 64 }).notNull(),
+  rating: integer("rating").notNull().default(60),
+  xp: integer("xp").notNull().default(0),
+  appearance: jsonb("appearance").notNull(), // { hair, skin, hairColor, etc }
+  attributes: jsonb("attributes").notNull(), // { speed, strength, tackling, handling, kicking, evasion }
+  state: jsonb("state").notNull(),           // matches, current week, etc.
+  status: varchar("status", { length: 16 }).notNull().default("active"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export type User = typeof users.$inferSelect;
 export type MatchRow = typeof matches.$inferSelect;
 export type TournamentRow = typeof tournaments.$inferSelect;
+export type PlayerCareerRow = typeof playerCareers.$inferSelect;

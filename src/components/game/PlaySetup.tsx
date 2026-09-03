@@ -304,9 +304,15 @@ export default function PlaySetup({ user, bindings, tournamentId, go, setInMatch
                 <li><Kbd>{lbl(bindings.action)}</Kbd> tackle · dive · kick-off · goal meter</li>
                 <li><Kbd>{lbl(bindings.switch)}</Kbd> switch defender · <Kbd>{lbl(bindings.pause)}</Kbd> pause</li>
               </ul>
-              <Btn primary className="mt-auto w-full !py-4 !text-xs" onClick={() => { setMatchNo((n) => n + 1); setStep("match"); }}>
-                Kick off
-              </Btn>
+              <button
+                onClick={() => {
+                  setMatchNo((n) => n + 1);
+                  setStep("match");
+                }}
+                className="px-btn primary mt-auto w-full !py-4 !text-xs blink"
+              >
+                START MATCH (KICK OFF) →
+              </button>
             </Panel>
           </div>
         )}

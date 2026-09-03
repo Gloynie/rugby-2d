@@ -66,7 +66,7 @@ export default function CareerHub({ careerId, go }: { careerId: number; go: (s: 
       </div>
       {error && <p className="mb-3 border-2 border-red-500/60 bg-red-950/60 px-4 py-2 text-red-200">{error}</p>}
       <Scroll className="pr-2">
-        {tab === "overview" && <Overview state={state} next={next} onPlay={next ? () => go({ name: "career-match", id: careerId, fixtureId: next.id }) : undefined} busy={busy} />}
+        {tab === "overview" && <Overview state={state} next={next} onPlay={next ? () => go({ name: "career-match", id: careerId, fixtureId: next.id, mode: "manager" }) : undefined} busy={busy} />}
         {tab === "roster" && <Roster state={state} onAction={(id, t) => action({ action: "player-action", playerId: id, type: t })} busy={busy} />}
         {tab === "talk" && <Talk state={state} onTalk={(t) => action({ action: "team-talk", type: t })} busy={busy} />}
         {tab === "training" && state && (

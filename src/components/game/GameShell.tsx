@@ -10,6 +10,8 @@ import HowToScreen from "./HowTo";
 import CareerStart from "./CareerStart";
 import CareerHub from "./CareerHub";
 import CareerMatch from "./CareerMatch";
+import PlayerCareerStart from "./PlayerCareerStart";
+import PlayerCareerHub from "./PlayerCareerHub";
 import MainMenu from "./MainMenu";
 import MenuBackground from "./MenuBackground";
 import PlaySetup from "./PlaySetup";
@@ -28,7 +30,9 @@ export type Screen =
   | { name: "howto" }
   | { name: "career" }
   | { name: "career-hub"; id: number }
-  | { name: "career-match"; id: number; fixtureId: string };
+  | { name: "career-match"; id: number; fixtureId: string; mode: "manager" | "player" }
+  | { name: "player-career-start" }
+  | { name: "player-career-hub"; id: number };
 
 const TABS: { label: string; screen: Screen }[] = [
   { label: "Home", screen: { name: "menu" } },
@@ -37,6 +41,7 @@ const TABS: { label: string; screen: Screen }[] = [
   { label: "Squads", screen: { name: "squads" } },
   { label: "Controls", screen: { name: "controls" } },
   { label: "Manager", screen: { name: "career" } },
+  { label: "Pro Career", screen: { name: "player-career-start" } },
 ];
 
 export default function GameShell({ initialUser, initialScreen }: { initialUser: SessionUser | null; initialScreen?: Screen }) {
@@ -163,9 +168,11 @@ export default function GameShell({ initialUser, initialScreen }: { initialUser:
           {screen.name === "controls" && <ControlsScreen bindings={bindings} setBindings={setBindings} />}
           {screen.name === "profile" && <ProfileScreen user={user} setUser={setUser} initialMode={screen.mode} go={go} offline={offline} />}
           {screen.name === "howto" && <HowToScreen bindings={bindings} />}
-          {screen.name === "career" && (user ? <CareerStart user={user} go={go} /> : <ProfileScreen user={user} setUser={setUser} initialMode="login" go={go} />)}
+           {screen.name === "career" && (user ? <CareerStart user={user} go={go} /> : <ProfileScreen user={user} setUser={setUser} initialMode="login" go={go} />)}
           {screen.name === "career-hub" && <CareerHub careerId={screen.id} go={go} />}
-          {screen.name === "career-match" && <CareerMatch careerId={screen.id} fixtureId={screen.fixtureId} bindings={bindings} go={go} />}
+          {screen.name === "career-match" && <CareerMatch careerId={screen.id} fixtureId={screen.fixtureId} mode={screen.mode} bindings={bindings} go={go} />}
+          {screen.name === "player-career-start" && (user ? <PlayerCareerStart user={user} go={go} /> : <ProfileScreen user={user} setUser={setUser} initialMode="login" go={go} />)}
+          {screen.name === "player-career-hub" && <PlayerCareerHub id={screen.id} go={go} />}
         </div>
 
         {!inMatch && (
