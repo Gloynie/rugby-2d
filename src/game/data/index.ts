@@ -12,7 +12,23 @@ export const TEAMS: TeamData[] = [
   ...SUPER_RUGBY_TEAMS,
 ];
 
-const teamMap = new Map(TEAMS.map((t) => [t.id, t]));
+// Auto-pad player lists to at least 23 players for every team
+export const PADDED_TEAMS: TeamData[] = TEAMS.map((t) => {
+  const players = [...t.players];
+  const genericNames = [
+    "James O'Connor", "Thomas Ryan", "Luke Murphy", "William Byrne", "Daniel Kelly",
+    "Michael McCarthy", "John O'Neill", "Patrick Walsh", "Conor O'Brien", "Sean Healy",
+    "David Sullivan", "Kevin Doyle", "Brian Foley", "Paul Sheehan", "Mark Brennan",
+    "Matthew Higgins", "Andrew Johnston", "Richard Fitz", "Simon Fitzgerald", "Peter Connolly",
+  ];
+  while (players.length < 23) {
+    const idx = players.length - t.players.length;
+    players.push(genericNames[idx % genericNames.length] + " (Sub)");
+  }
+  return { ...t, players };
+});
+
+const teamMap = new Map(PADDED_TEAMS.map((t) => [t.id, t]));
 
 export function getTeam(id: string): TeamData {
   const t = teamMap.get(id);

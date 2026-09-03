@@ -149,6 +149,8 @@ interface FrameContext {
   slots: [Map<number, number>, Map<number, number>];
 }
 
+import type { RefereeState, TMOState } from "./types";
+
 export class RugbyEngine {
   teams: [TeamRuntime, TeamRuntime];
   players: PlayerState[] = [];
@@ -191,38 +193,93 @@ export class RugbyEngine {
   aiSpeedMult = 1;
   rng: () => number = Math.random;
 
+  // --- New features ---
+  referee: RefereeState;
+  touchJudges: [RefereeState, RefereeState];
+  tmo: TMOState;
+  spectatorSpeed = 1;
+
   constructor(cfg: MatchConfig) {
     this.userTeam = cfg.userTeam;
     this.halfSeconds = cfg.halfSeconds;
     this.difficulty = cfg.difficulty;
+    this.spectatorSpeed = cfg.spectatorSpeed ?? 1;
     this.aiSpeedMult = cfg.difficulty === "easy" ? 0.92 : cfg.difficulty === "hard" ? 1.06 : 1;
     this.teams = [
       { data: cfg.home, dir: 1, color: cfg.homeColor ?? cfg.home.primary, lineF: 60 },
       { data: cfg.away, dir: -1, color: cfg.awayColor ?? cfg.away.secondary, lineF: 60 },
     ];
+
+    // Initialize TMO state
+    this.tmo = {
+      active: false,
+      timer: 0,
+      checkType: "try",
+      homeScoreBefore: 0,
+      awayScoreBefore: 0,
+      decision: "confirmed",
+      reason: "",
+    };
+
+    // Initialize Referee
+    this.referee = {
+      pos: { x: 55, y: 30 },
+      vel: { x: 0, y: 0 },
+      facing: 0,
+      animFrame: 0,
+    };
+
+    // Initialize Touch Judges (wearing neon green)
+    this.touchJudges = [
+      { pos: { x: 60, y: -1.5 }, vel: { x: 0, y: 0 }, facing: 0, animFrame: 0 },
+      { pos: { x: 60, y: W + 1.5 }, vel: { x: 0, y: 0 }, facing: Math.PI, animFrame: 0 },
+    ];
+
     let id = 0;
     for (const t of [0, 1] as TeamIndex[]) {
       const data = this.teams[t].data;
-      for (let n = 1; n <= 15; n++) {
-        const name = data.players[n - 1] ?? `Player ${n}`;
+      const totalPlayersCount = data.players.length;
+      
+      // Determine starters vs bench lists (indexes in roster)
+      const lineup = t === 0 ? (cfg.homeLineup ?? Array.from({length: 15}, (_, i) => i)) : (cfg.awayLineup ?? Array.from({length: 15}, (_, i) => i));
+      const bench = t === 0 ? (cfg.homeBench ?? Array.from({length: 8}, (_, i) => 15 + i)) : (cfg.awayBench ?? Array.from({length: 8}, (_, i) => 15 + i));
+
+      for (let i = 0; i < totalPlayersCount; i++) {
+        const name = data.players[i] ?? `Player ${i + 1}`;
+        const isStarter = lineup.includes(i);
+        const isBenched = bench.includes(i);
+        
+        // If neither starter nor benched, they are extended squad reserves (available for bench)
+        const activeInGame = isStarter || isBenched;
+        if (!activeInGame && i >= 23) continue; // clamp to 23 for simplicity in the match state
+
+        const jerseyNumber = isStarter ? (lineup.indexOf(i) + 1) : (16 + bench.indexOf(i));
+        const attrs = buildAttributes(jerseyNumber, name, data.rating);
+        const playerRating = Math.round((attrs.speed + attrs.strength + attrs.tackling + attrs.handling + attrs.kicking + attrs.evasion) / 6);
+
         this.players.push({
           id: id++,
           team: t,
-          number: n,
+          number: jerseyNumber,
           name,
           pos: { x: 60, y: 35 },
           vel: { x: 0, y: 0 },
           facing: this.teams[t].dir === 1 ? 0 : Math.PI,
-          attrs: buildAttributes(n, name, data.rating),
+          attrs,
           down: 0,
           busy: 0,
           tackleCooldown: 0,
           stamina: 100,
-          isForward: n <= 8,
+          isForward: jerseyNumber <= 8,
           aiTimer: this.rng() * 0.2,
           anim: "none",
           animUntil: 0,
           fatigue: 0,
+          isOnField: isStarter,
+          isBench: isBenched,
+          isInjured: false,
+          hasBeenSubbedOff: false,
+          rating: playerRating,
         });
       }
     }
@@ -261,7 +318,40 @@ export class RugbyEngine {
     return this.teams[t].data.name;
   }
   pl(team: TeamIndex, number: number): PlayerState {
-    return this.players[team * 15 + number - 1];
+    // Find player by shirt number (active or on bench)
+    const p = this.players.find((pl) => pl.team === team && pl.number === number);
+    if (p) return p;
+    // Fallback if not found
+    return this.players.find((pl) => pl.team === team && pl.isOnField) || this.players[team === 0 ? 0 : 15];
+  }
+
+  /** Force a substitution during the game */
+  makeSubstitution(team: TeamIndex, onNumber: number, offNumber: number): boolean {
+    const playerOff = this.players.find((p) => p.team === team && p.number === offNumber && p.isOnField);
+    const playerOn = this.players.find((p) => p.team === team && p.number === onNumber && p.isBench && !p.hasBeenSubbedOff && !p.isInjured);
+    
+    if (!playerOff || !playerOn) return false;
+    
+    playerOff.isOnField = false;
+    playerOff.isBench = false;
+    playerOff.hasBeenSubbedOff = true;
+    playerOff.anim = "none";
+    
+    playerOn.isOnField = true;
+    playerOn.isBench = false;
+    playerOn.pos = { ...playerOff.pos };
+    playerOn.facing = playerOff.facing;
+    playerOn.stamina = Math.min(100 - playerOn.fatigue, 95); // Starts with fresh legs but slightly worn
+    
+    // Announce sub
+    this.say("SUBSTITUTION", `${playerOff.name} off, ${playerOn.name} on`, this.teams[team].color, 3);
+    this.pushComment(`Substitution: ${playerOn.name} replaces ${playerOff.name} for ${this.teamName(team)}.`, team);
+    
+    // Update controlled player if we just subbed him off
+    if (this.controlled === playerOff.id) {
+      this.controlled = playerOn.id;
+    }
+    return true;
   }
   carrier(): PlayerState | null {
     return this.ball.carrier === null ? null : this.players[this.ball.carrier];
@@ -306,6 +396,7 @@ export class RugbyEngine {
   nearestOpponentDist(p: PlayerState): number {
     let best = 99;
     for (const o of this.players) {
+      if (!o.isOnField) continue;
       if (o.team === p.team || o.down > 0) continue;
       const d = dist(o.pos, p.pos);
       if (d < best) best = d;
@@ -315,6 +406,7 @@ export class RugbyEngine {
   spaceAt(pos: Vec2, team: TeamIndex): number {
     let best = 12;
     for (const o of this.players) {
+      if (!o.isOnField) continue;
       if (o.team === team || o.down > 0) continue;
       const d = dist(o.pos, pos);
       if (d < best) best = d;
@@ -325,6 +417,7 @@ export class RugbyEngine {
     let best: PlayerState | null = null;
     let bd = Infinity;
     for (const p of this.players) {
+      if (!p.isOnField) continue;
       if (p.team !== team || p.id === excludeId || p.down > 0 || p.busy > 0) continue;
       const d = dist(p.pos, pos);
       if (d < bd) {
@@ -358,8 +451,99 @@ export class RugbyEngine {
     const t = (vz + Math.sqrt(Math.max(0, vz * vz + 2 * G * b.pos.z))) / G;
     return { x: b.pos.x + b.vel.x * t, y: b.pos.y + b.vel.y * t };
   }
+
+  /** Run Referee and Linesmen movement AI */
+  updateOfficials(dt: number): void {
+    const bp = this.ball.pos;
+    
+    // --- 1. Referee AI (neon green) ---
+    // Ref runs toward the ball, keeping a safe diagonal distance of 8m so as not to get in the way
+    const targetRefX = bp.x - 6;
+    const targetRefY = bp.y + (bp.y < 35 ? 7 : -7);
+    const dx = targetRefX - this.referee.pos.x;
+    const dy = targetRefY - this.referee.pos.y;
+    const d = Math.sqrt(dx * dx + dy * dy);
+    
+    if (d > 1.5) {
+      const speed = Math.min(5.2, d * 1.5);
+      this.referee.vel.x = (dx / d) * speed;
+      this.referee.vel.y = (dy / d) * speed;
+      this.referee.facing = Math.atan2(dy, dx);
+      this.referee.animFrame = (this.referee.animFrame + dt * speed * 2) % 6;
+    } else {
+      this.referee.vel.x = 0;
+      this.referee.vel.y = 0;
+    }
+    this.referee.pos.x = clamp(this.referee.pos.x + this.referee.vel.x * dt, 1, L - 1);
+    this.referee.pos.y = clamp(this.referee.pos.y + this.referee.vel.y * dt, 1, W - 1);
+
+    // --- 2. Touch Judges AI (neon green, holding flags) ---
+    // Linesmen stay strictly on their sideline, running parallel to the ball's X coordinate
+    this.touchJudges.forEach((tj, i) => {
+      const tdx = bp.x - tj.pos.x;
+      if (Math.abs(tdx) > 0.5) {
+        const speed = Math.min(6.5, Math.abs(tdx) * 2);
+        tj.vel.x = Math.sign(tdx) * speed;
+        tj.facing = tdx > 0 ? 0 : Math.PI;
+        tj.animFrame = (tj.animFrame + dt * speed * 2) % 6;
+      } else {
+        tj.vel.x = 0;
+      }
+      tj.pos.x = clamp(tj.pos.x + tj.vel.x * dt, 0.5, L - 0.5);
+    });
+  }
+
+  /** Trigger TMO (Television Match Official) Review screen */
+  triggerTMO(type: "try" | "forwardPass" | "highTackle", onConfirm: () => void, onOverride: () => void): void {
+    const isOverride = this.rng() < 0.28; // 28% chance of TMO override for dramatic effect!
+    const reasons = {
+      try: [
+        "Checking grounding... Ball grounded cleanly! Try stands.",
+        "Checking touchline... Foot was in touch! Try disallowed, lineout given.",
+      ],
+      forwardPass: [
+        "Checking pass trajectory... Clear backwards release. Play on!",
+        "Checking pass trajectory... Forward pass detected. Scrum awarded.",
+      ],
+      highTackle: [
+        "Checking tackle height... Shoulder to chest, clean tackle.",
+        "Checking tackle height... Direct contact to head! Red Card issued.",
+      ],
+    };
+
+    const textList = reasons[type];
+    const reasonText = isOverride ? textList[1] : textList[0];
+    
+    this.tmo = {
+      active: true,
+      timer: 3.5, // 3.5 seconds of dramatic pixel static replay overlay
+      checkType: type,
+      homeScoreBefore: this.score[0],
+      awayScoreBefore: this.score[1],
+      decision: isOverride ? "overridden" : "confirmed",
+      reason: reasonText,
+    };
+
+    this.say("TMO REVIEW", "Checking the big screen...", "#fbbf24", 3.5);
+    this.pushComment(`TMO Review: checking potential ${type === "try" ? "Try" : type === "forwardPass" ? "Forward Pass" : "High Tackle"}...`, null);
+
+    // After 3.5s delay, execute onConfirm or onOverride
+    setTimeout(() => {
+      if (!this.tmo.active) return;
+      this.tmo.active = false;
+      this.say("TMO DECISION", isOverride ? "OVERRULED!" : "DECISION STANDS", isOverride ? "#ef4444" : "#22c55e", 2.2);
+      this.pushComment(`TMO Decision: ${reasonText}`, null);
+      if (isOverride) onOverride();
+      else onConfirm();
+    }, 3500);
+  }
+
+  private updateTMO(dt: number): void {
+    this.tmo.timer -= dt;
+  }
   private resetPlayers(): void {
     for (const p of this.players) {
+      if (!p.isOnField) continue;
       p.down = 0;
       p.busy = 0;
       p.vel.x = 0;
@@ -387,8 +571,19 @@ export class RugbyEngine {
   // ---------- main update ----------
   update(dt: number, input: InputFrame): void {
     if (this.finished) return;
+    // Apply spectator speed multiplier (e.g. 2x speed spectating)
+    dt *= this.spectatorSpeed;
     this.dt = dt;
     this.time += dt;
+    
+    // Update TMO state if active
+    if (this.tmo.active) {
+      this.updateTMO(dt);
+      return;
+    }
+
+    // Update match officials (referee + touch judges)
+    this.updateOfficials(dt);
     if (this.message.timer > 0) this.message.timer -= dt;
     for (const p of this.players) {
       if (p.down > 0) p.down -= dt;
@@ -776,9 +971,10 @@ export class RugbyEngine {
       .sort((a, c) => a.pos.y - c.pos.y);
     const n = liners.length;
     if (n > 0) {
-      const spacing = n > 1 ? Math.min(6.2, 64 / (n - 1)) : 0;
+      // Widen defender line gaps to prevent grouping in the center
+      const spacing = n > 1 ? Math.min(8.5, 68 / (n - 1)) : 0;
       const half = ((n - 1) / 2) * spacing;
-      const center = clamp(focus.y, 2 + half, W - 2 - half);
+      const center = clamp(focus.y, 4 + half, W - 4 - half);
       liners.forEach((p, i) => slots[def].set(p.id, center - half + i * spacing));
     }
     return { carrier, focus, att, chasers, slots };
@@ -787,6 +983,11 @@ export class RugbyEngine {
   private moveAll(dt: number, input: InputFrame): void {
     const ctx = this.buildContext();
     for (const p of this.players) {
+      if (!p.isOnField) {
+        p.vel.x = 0;
+        p.vel.y = 0;
+        continue;
+      }
       if (p.down > 0 || p.busy > 0) {
         p.vel.x *= 0.5;
         p.vel.y *= 0.5;
@@ -842,9 +1043,11 @@ export class RugbyEngine {
     const n = this.players.length;
     for (let i = 0; i < n; i++) {
       const a = this.players[i];
+      if (!a.isOnField) continue;
       if (a.down > 0 || a.busy > 0) continue;
       for (let j = i + 1; j < n; j++) {
         const b = this.players[j];
+        if (!b.isOnField) continue;
         if (b.down > 0 || b.busy > 0) continue;
         const dx = b.pos.x - a.pos.x;
         const dy = b.pos.y - a.pos.y;
@@ -944,13 +1147,13 @@ export class RugbyEngine {
 
   private supportOffset(number: number, open: 1 | -1): { dx: number; dy: number } {
     switch (number) {
-      case 9: return { dx: -3, dy: -open * 2.5 };
-      case 10: return { dx: -7, dy: open * 9 };
-      case 12: return { dx: -9, dy: open * 17 };
-      case 13: return { dx: -11, dy: open * 25 };
-      case 14: return open === 1 ? { dx: -12, dy: 33 } : { dx: -7, dy: 12 };
-      case 11: return open === -1 ? { dx: -12, dy: -33 } : { dx: -7, dy: -12 };
-      case 15: return { dx: -16, dy: open * 6 };
+      case 9: return { dx: -3.5, dy: -open * 3.5 };
+      case 10: return { dx: -7.5, dy: open * 12 };
+      case 12: return { dx: -10, dy: open * 22 };
+      case 13: return { dx: -12.5, dy: open * 32 };
+      case 14: return open === 1 ? { dx: -13.5, dy: 42 } : { dx: -8.5, dy: 18 };
+      case 11: return open === -1 ? { dx: -13.5, dy: -42 } : { dx: -8.5, dy: -18 };
+      case 15: return { dx: -18, dy: open * 10 };
       case 1: return { dx: -4, dy: 3.5 };
       case 2: return { dx: -2.5, dy: -3 };
       case 3: return { dx: -4, dy: -6.5 };
@@ -1003,6 +1206,7 @@ export class RugbyEngine {
     let best: PlayerState | null = null;
     let bestScore = -Infinity;
     for (const q of this.players) {
+      if (!q.isOnField) continue;
       if (q.team !== t || q.id === p.id || q.down > 0 || q.busy > 0) continue;
       const dy = (q.pos.y - p.pos.y) * side;
       if (dy < 1.0) continue;
@@ -1367,6 +1571,37 @@ export class RugbyEngine {
 
   private scoreTry(p: PlayerState): void {
     const t = p.team;
+    
+    // --- New feature: 18% chance of TMO Review on tries ---
+    if (this.rng() < 0.18) {
+      this.triggerTMO(
+        "try",
+        () => {
+          // Confirm TMO: award try normally
+          this.score[t] += 5;
+          this.tries[t]++;
+          this.events.push({ minute: this.gameMinute(), team: t, type: "try", player: p.name, points: 5 });
+          this.say("TRY CONFIRMED", `${p.name} – ${this.teamName(t)}`, this.teams[t].color, 2.6);
+          this.phase = "try";
+          this.phaseTimer = 2.4;
+          this.tryInfo = { team: t, y: clamp(p.pos.y, 3, W - 3) };
+          this.tryScorer = p.id;
+          p.anim = "celebrate";
+          p.animUntil = this.time + 8;
+          this.ball.carrier = p.id;
+          this.charging = false;
+          this.kickCharge = 0;
+          this.ruck = null;
+        },
+        () => {
+          // Override TMO: Disallow try, restart with Goal-line drop-out or 22m drop-out
+          this.say("TRY DISALLOWED", "No grounding / foot in touch", "#ef4444", 3);
+          this.scheduleRestart("dropout", other(t));
+        }
+      );
+      return;
+    }
+
     this.score[t] += 5;
     this.tries[t]++;
     this.events.push({ minute: this.gameMinute(), team: t, type: "try", player: p.name, points: 5 });
@@ -1387,6 +1622,7 @@ export class RugbyEngine {
     const c = this.carrier();
     if (!c) return;
     for (const p of this.players) {
+      if (!p.isOnField) continue;
       if (p.team === c.team || p.down > 0 || p.busy > 0 || p.tackleCooldown > 0) continue;
       if (dist(p.pos, c.pos) < TACKLE_R) {
         this.attemptTackle(p, c, p.id === this.controlled ? -0.15 : 0);
@@ -1396,6 +1632,36 @@ export class RugbyEngine {
   }
 
   private attemptTackle(t: PlayerState, c: PlayerState, bonus: number): void {
+    // --- New features: Bounce-offs and Side-steps ---
+    const carrierIsForward = c.number <= 8;
+    const carrierIsBack = c.number > 8;
+
+    // 1. Backs Side-step Chance (Agility / Evasion)
+    if (carrierIsBack && this.rng() < 0.18) {
+      c.anim = "sidestep";
+      c.animUntil = this.time + 0.55;
+      t.down = 1.2; // Freeze/stun defender
+      t.anim = "dive";
+      t.tackleCooldown = 1.5;
+      this.say("SIDE-STEP!", `${c.name} evades the tackle!`, this.teams[c.team].color, 1.5);
+      this.pushComment(`Beautiful side-step from ${c.name} to bypass the defender!`, c.team);
+      import("./audio").then((a) => a.playGoal()); // Play a nice success sound
+      return;
+    }
+
+    // 2. Forwards Bounce-off Chance (Strength / Physicality)
+    if (carrierIsForward && this.rng() < 0.18) {
+      c.anim = "bounce";
+      c.animUntil = this.time + 0.6;
+      t.down = 1.6; // Knock tackler flat on their back
+      t.anim = "lie";
+      t.tackleCooldown = 2.0;
+      this.say("BOUNCED!", `${c.name} runs over the defender!`, this.teams[c.team].color, 1.5);
+      this.pushComment(`PHYSICALITY! ${c.name} bounces the tackler flat on the turf!`, c.team);
+      import("./audio").then((a) => a.playTackle()); // Play impact thud
+      return;
+    }
+
     let p = 0.44 + (t.attrs.tackling - c.attrs.evasion) / 250 + (t.attrs.strength - c.attrs.strength) / 600 + bonus;
     if (c.team === this.userTeam) p += this.difficulty === "easy" ? -0.12 : this.difficulty === "hard" ? 0.06 : 0;
     else if (t.team === this.userTeam) p += this.difficulty === "easy" ? 0.08 : this.difficulty === "hard" ? -0.05 : 0;
@@ -1430,6 +1696,42 @@ export class RugbyEngine {
       this.scheduleRestart("dropout", t.team);
       return;
     }
+
+    // --- New Feature: Slim chance (2.5%) of mid-game injury on tackles ---
+    if (this.rng() < 0.025) {
+      const injuredPlayer = this.rng() < 0.5 ? c : t;
+      injuredPlayer.isInjured = true;
+      injuredPlayer.isOnField = false;
+      injuredPlayer.down = 99; // Stays down on turf
+      injuredPlayer.anim = "injured";
+      
+      this.say("INJURY!", `${injuredPlayer.name} has been injured!`, "#ef4444", 4);
+      this.pushComment(`Injury whistle: ${injuredPlayer.name} is down on the pitch and needs medical attention.`, injuredPlayer.team);
+      import("./audio").then((a) => a.playWhistle()); // Play referee whistle
+
+      // Drop the ball so it's a stoppage/restart
+      this.ball.carrier = null;
+      this.ball.vel = { x: 0, y: 0, z: 0 };
+      this.ball.pos = { x: injuredPlayer.pos.x, y: injuredPlayer.pos.y, z: 0 };
+
+      // Handle CPU-controlled auto-substitution
+      if (this.userTeam !== injuredPlayer.team) {
+        setTimeout(() => {
+          const benchPlayer = this.players.find((p) => p.team === injuredPlayer.team && p.isBench && !p.hasBeenSubbedOff);
+          if (benchPlayer) {
+            this.makeSubstitution(injuredPlayer.team, benchPlayer.number, injuredPlayer.number);
+            this.scheduleRestart("scrum", injuredPlayer.team, injuredPlayer.pos.x, injuredPlayer.pos.y);
+          }
+        }, 1500);
+      } else {
+        // Halt play and prompt the user to make a sub (handled by MatchView interface)
+        this.phase = "whistle";
+        this.phaseTimer = 3.0;
+        this.restart = { kind: "scrum", team: injuredPlayer.team, x: injuredPlayer.pos.x, y: injuredPlayer.pos.y };
+      }
+      return;
+    }
+
     this.lastTackle = { tackler: t.id, carrier: c.id };
     c.down = 3;
     t.down = 2.8;
@@ -1507,6 +1809,7 @@ export class RugbyEngine {
     const ctx = this.buildContext();
     ctx.focus = rp;
     for (const p of this.players) {
+      if (!p.isOnField) continue;
       if (p.down > 0 || p.busy > 0) continue;
       let d: Decision;
       if (p.id === this.controlled) {
@@ -1597,6 +1900,7 @@ export class RugbyEngine {
     let best: PlayerState | null = null;
     let bd = Infinity;
     for (const p of this.players) {
+      if (!p.isOnField) continue;
       if (p.team !== team || p.down > 0 || r.joined[team].has(p.id)) continue;
       const dd = dist(p.pos, rp);
       if (dd < bd) {
@@ -1632,7 +1936,7 @@ export class RugbyEngine {
       this.place(this.pl(team, n), team, fM + df, my + open * dy);
       this.place(this.pl(def, n), team, fM + 8.5 + (n === 15 ? 16 : 0), my + open * dy);
     }
-    for (const p of this.players) p.busy = 9;
+    for (const p of this.players) { if (p.isOnField) p.busy = 9; }
     this.ball.carrier = null;
     this.ball.pos = { x: this.wx(team, fM), y: my, z: 0 };
     this.phase = "scrum";
@@ -1654,7 +1958,7 @@ export class RugbyEngine {
     const att = r.team;
     const def = other(att);
     const diff = this.packStrength(att) - this.packStrength(def);
-    for (const p of this.players) p.busy = p.isForward ? 1.2 : 0;
+    for (const p of this.players) { if (p.isOnField) p.busy = p.isForward ? 1.2 : 0; }
     if (this.rng() < 0.06) {
       const pen: TeamIndex = this.rng() < 0.5 + diff * 0.01 ? att : def;
       this.say("SCRUM PENALTY", `Collapsed scrum – penalty to ${this.teamName(pen)}`, "#fbbf24");
@@ -1715,7 +2019,7 @@ export class RugbyEngine {
     const jump = (t: TeamIndex) => (this.pl(t, 4).attrs.strength + this.pl(t, 5).attrs.strength) / 2;
     const pWin = clamp(0.82 + (jump(att) - jump(def)) * 0.004, 0.55, 0.95);
     const winner: TeamIndex = this.rng() < pWin ? att : def;
-    for (const p of this.players) p.busy = p.isForward ? 0.6 : 0;
+    for (const p of this.players) { if (p.isOnField) p.busy = p.isForward ? 0.6 : 0; }
     if (winner !== att) {
       this.say("LINEOUT STOLEN!", `${this.teamName(def)} win it in the air`, "#fbbf24");
       this.pushComment(`Lineout stolen! ${this.teamName(def)} against the throw.`, def);
@@ -1992,7 +2296,7 @@ export class RugbyEngine {
       this.say("Penalty missed", "Play on!", "#f87171", 1.5);
       this.phase = "play";
       this.possession = other(gk.team);
-      for (const p of this.players) p.busy = 0;
+      for (const p of this.players) { if (p.isOnField) p.busy = 0; }
       if (this.userTeam !== null) this.controlled = this.nearestPlayer(this.userTeam, { x: b.pos.x, y: b.pos.y }).id;
       return;
     }

@@ -72,9 +72,15 @@ export interface PlayerState {
   animUntil: number;
   /** long-term fatigue accumulated over the match (caps max stamina) */
   fatigue: number;
+  // --- New features ---
+  isOnField: boolean;      // currently on field (true for starting XV or subbed-on)
+  isBench: boolean;        // currently on the bench
+  isInjured: boolean;      // got injured and can no longer play
+  hasBeenSubbedOff: boolean; // subbed off (cannot re-enter)
+  rating: number;          // overall player rating
 }
 
-export type AnimKind = "none" | "pass" | "kick" | "dive" | "tackle" | "celebrate";
+export type AnimKind = "none" | "pass" | "kick" | "dive" | "tackle" | "celebrate" | "injured" | "sidestep" | "bounce" | "lie";
 
 export type KickKind = "punt" | "grubber" | "kickoff" | "dropout" | "dropgoal" | "conversion" | "penalty";
 
@@ -149,6 +155,31 @@ export interface MatchConfig {
   awayColor?: string;
   competition?: string;
   stadiumId?: string;
+  /** Custom starting lineups (indexes into the team's player list) */
+  homeLineup?: number[];
+  awayLineup?: number[];
+  /** Custom bench lineups */
+  homeBench?: number[];
+  awayBench?: number[];
+  /** Speeds up the engine simulation for watch mode (e.g. 1 or 2) */
+  spectatorSpeed?: number;
+}
+
+export interface RefereeState {
+  pos: Vec2;
+  vel: Vec2;
+  facing: number;
+  animFrame: number;
+}
+
+export interface TMOState {
+  active: boolean;
+  timer: number;
+  checkType: "try" | "forwardPass" | "highTackle";
+  homeScoreBefore: number;
+  awayScoreBefore: number;
+  decision: "confirmed" | "overridden";
+  reason: string;
 }
 
 export interface MatchResult {

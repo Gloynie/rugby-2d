@@ -487,16 +487,53 @@ export class Renderer {
   }
 
   // ---------- entities ----------
+  private officialsLook: Look = {
+    id: "officials",
+    jersey: "#22c55e", // Neon green
+    jersey2: "#111827",
+    shorts: "#111827",
+    socks: "#22c55e",
+    skin: "#f3d1b0",
+    hair: "#1a1a1a",
+    number: 0,
+  };
+
   private drawEntities(m: RugbyEngine, snap: Snapshot, f: FrameOptions): void {
     const b = this.b;
     const z = this.zoom;
+    
+    // Draw Shadows for Players
     const order = [...snap.players].sort((p, q) => (p.lie >= 0 ? 0 : 1) - (q.lie >= 0 ? 0 : 1) || p.y - q.y);
     for (const v of order) this.shadow(this.sx(v.x), this.sy(v.y), v.lie >= 0 ? 12 * z : 8 * z);
+    
+    // Draw Shadows for Referee and Touch Judges
+    this.shadow(this.sx(m.referee.pos.x), this.sy(m.referee.pos.y), 8 * z);
+    m.touchJudges.forEach((tj) => this.shadow(this.sx(tj.pos.x), this.sy(tj.pos.y), 8 * z));
+
     const ball = snap.ball;
     if (!ball.carried) this.shadow(this.sx(ball.x), this.sy(ball.y), Math.max(3, (6 - ball.z * 0.3) * z));
     const controlled = !f.snapshot && m.userTeam !== null ? m.controlled : -1;
+    
+    // Draw Referee on field (neon green)
+    const refDx = Math.cos(m.referee.facing);
+    const refView: View = Math.abs(refDx) >= 0.5 ? "side" : Math.sin(m.referee.facing) > 0 ? "front" : "back";
+    const refPose: Pose = Math.sqrt(m.referee.vel.x * m.referee.vel.x + m.referee.vel.y * m.referee.vel.y) > 0.5 ? "run" : "idle";
+    const refSpr = spriteFactory().get(this.officialsLook, refView, refPose, Math.floor(m.referee.animFrame), refView === "side" && refDx < 0, -1);
+    b.drawImage(refSpr, this.sx(m.referee.pos.x) - ANCHOR_X * z, this.sy(m.referee.pos.y) - FOOT_Y * z, SPR_W * z, SPR_H * z);
+
+    // Draw Touch Judges on the sidelines (neon green, holding flags)
+    m.touchJudges.forEach((tj) => {
+      const tjDx = Math.cos(tj.facing);
+      const tjView: View = "side";
+      const tjPose: Pose = Math.abs(tj.vel.x) > 0.5 ? "run" : "idle";
+      const tjSpr = spriteFactory().get(this.officialsLook, tjView, tjPose, Math.floor(tj.animFrame), tjDx < 0, -1);
+      b.drawImage(tjSpr, this.sx(tj.pos.x) - ANCHOR_X * z, this.sy(tj.pos.y) - FOOT_Y * z, SPR_W * z, SPR_H * z);
+    });
+
     for (const v of order) {
-      const look = this.looks[v.team][v.id % 15];
+      // Robust lookup in looks roster using modulo bounds
+      const teamLooksRoster = this.looks[v.team];
+      const look = teamLooksRoster[v.id % teamLooksRoster.length];
       if (!look) continue;
       const spr = spriteFactory().get(look, v.view, v.pose, v.frame, v.mirror, v.lie);
       const x = this.sx(v.x);
@@ -654,6 +691,59 @@ export class Renderer {
     this.drawMiniMap(m);
     if (this.showHelp && m.userTeam !== null) this.drawHelp();
     this.drawPhaseUI(m);
+
+    // --- Draw TMO overlay if active ---
+    if (m.tmo.active) {
+      this.drawTMOOverlay(m);
+    }
+
+    // --- Draw Spectator Speed indicator if accelerated ---
+    if (m.spectatorSpeed > 1) {
+      this.panel(this.bufW - 90, 6, 84, 16, { accent: "#facc15" });
+      this.text(">> SPECTATE 2X", this.bufW - 48, 10, { align: "center", color: "#facc15", size: 8 });
+    }
+  }
+
+  private drawTMOOverlay(m: RugbyEngine): void {
+    const b = this.b;
+    const w = 400;
+    const h = 130;
+    const x = Math.round(this.bufW / 2 - w / 2);
+    const y = Math.round(this.bufH / 2 - h / 2 - 20);
+
+    // Draw static background card
+    this.panel(x, y, w, h, { fill: "rgba(10,15,30,0.95)", border: "#fbbf24", accent: "#fbbf24" });
+    
+    // Draw CRT static-noise scanline lines in review area
+    b.fillStyle = "rgba(255,255,255,0.04)";
+    for (let i = 0; i < h; i += 4) {
+      if (Math.floor(this.now * 25 + i) % 3 === 0) {
+        b.fillRect(x + 10, y + i, w - 20, 2);
+      }
+    }
+
+    this.text("TMO TELEVISION REVIEW", this.bufW / 2, y + 10, { align: "center", color: "#fbbf24", size: 10 });
+    this.text(`Potential: ${m.tmo.checkType.toUpperCase()}`, this.bufW / 2, y + 26, { align: "center", color: "#fff", size: 8 });
+    
+    // Animated progress scanbar
+    const barWidth = 240;
+    const barX = this.bufW / 2 - barWidth / 2;
+    this.bar(barX, y + 42, barWidth, 6, (3.5 - m.tmo.timer) / 3.5, "#fbbf24");
+    
+    // Blinking TMO red alert dot
+    const blink = Math.floor(this.now * 3) % 2 === 0;
+    if (blink) {
+      this.rect(this.bufW / 2 - 130, y + 10, 6, 6, "#ef4444");
+    }
+
+    // Live TMO decision text
+    this.text(m.tmo.reason.toUpperCase(), this.bufW / 2, y + 64, { align: "center", color: "#cbd5e1", size: 8 });
+    
+    // Status message
+    const decisionColor = m.tmo.decision === "confirmed" ? "#22c55e" : "#ef4444";
+    const statusText = m.tmo.timer > 1.2 ? "ANALYSING REPLAY ANGLE..." : `DECISION: ${m.tmo.decision.toUpperCase()}`;
+    this.text(statusText, this.bufW / 2, y + 84, { align: "center", color: m.tmo.timer > 1.2 ? "#94a3b8" : decisionColor, size: 8 });
+    this.text("REFEREE CONSULTING VIDEO OFFICIAL", this.bufW / 2, y + 104, { align: "center", color: "#64748b", size: 8 });
   }
 
   private drawScoreboard(m: RugbyEngine): void {
