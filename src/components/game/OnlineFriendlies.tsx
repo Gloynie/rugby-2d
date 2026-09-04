@@ -71,12 +71,16 @@ function OnlineLobby({ user, go }: { user: SessionUser; go: (s: Screen) => void 
   const [halfSeconds, setHalfSeconds] = useState(180);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [lastRefresh, setLastRefresh] = useState<Date | null>(null);
 
   const refresh = async () => {
     const res = await fetch("/api/online-friendlies", { cache: "no-store" });
     const data = await res.json().catch(() => ({}));
-    if (res.ok) setMatches(data.matches ?? []);
-    else setError(data.error ?? "Could not load online matches.");
+    if (res.ok) {
+      setMatches(data.matches ?? []);
+      setLastRefresh(new Date());
+    } else setError(data.error ?? "Could not load online matches.");
   };
 
   useEffect(() => {
@@ -88,42 +92,62 @@ function OnlineLobby({ user, go }: { user: SessionUser; go: (s: Screen) => void 
   const invite = async () => {
     setBusy(true);
     setError(null);
+    setNotice(null);
     const res = await fetch("/api/online-friendlies", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ opponentUsername: opponent, hostTeamId, guestTeamId, stadiumId, halfSeconds }),
     });
-    const data = await res.json().catch(() => ({}));
+    const data = await res.json().catch(() => ({})) as { id?: number; recipient?: string; existing?: boolean; status?: string; error?: string };
     setBusy(false);
     if (!res.ok || !data.id) {
       setError(data.error ?? "Could not send the invitation.");
       return;
     }
-    go({ name: "online-match", id: data.id });
+    setOpponent("");
+    setNotice(data.existing
+      ? `An active ${data.status ?? ""} match with ${data.recipient ?? "that player"} already exists below.`
+      : `Invite sent to ${data.recipient ?? opponent}. It is now visible in Your Sent Invites below.`);
+    await refresh();
   };
 
   const accept = async (id: number, action: "accept" | "decline") => {
     setBusy(true);
+    setError(null);
     const res = await fetch(`/api/online-friendlies/${id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
+    const data = await res.json().catch(() => ({})) as { error?: string };
     setBusy(false);
-    if (res.ok && action === "accept") go({ name: "online-match", id });
-    else await refresh();
+    if (!res.ok) {
+      setError(data.error ?? `Could not ${action} this invitation.`);
+      return;
+    }
+    if (action === "accept") go({ name: "online-match", id });
+    else {
+      setNotice("Invitation declined.");
+      await refresh();
+    }
   };
 
-  const active = matches.filter((m) => ["ready", "live"].includes(m.status));
-  const incoming = matches.filter((m) => m.role === "guest" && m.status === "invited");
-  const outgoing = matches.filter((m) => m.role === "host" && m.status === "invited");
+  const visibleMatches = matches.filter((m) => ["invited", "ready", "live"].includes(m.status));
+  const active = visibleMatches.filter((m) => ["ready", "live"].includes(m.status));
+  const incoming = visibleMatches.filter((m) => m.role === "guest" && m.status === "invited");
+  const outgoing = visibleMatches.filter((m) => m.role === "host" && m.status === "invited");
 
   return (
     <div className="flex h-full flex-col">
-      <ScreenHeader kicker="Online Multiplayer" title="Online Friendlies" right={<Btn onClick={() => go({ name: "menu" })}>Main menu</Btn>} />
+      <ScreenHeader
+        kicker="Online Multiplayer"
+        title="Online Friendlies"
+        right={<div className="flex gap-2"><Btn onClick={() => void refresh()}>Refresh</Btn><Btn onClick={() => go({ name: "menu" })}>Main menu</Btn></div>}
+      />
       <Scroll className="pr-2">
         {error && <p className="mb-4 border-2 border-red-500/60 bg-red-950/60 px-4 py-3 text-red-200">{error}</p>}
+        {notice && <p className="mb-4 border-2 border-green-400/60 bg-green-950/60 px-4 py-3 text-green-200">{notice}</p>}
         <Panel className="p-5" accent="#22c55e">
-          <Kicker color="#22c55e">Invite a player by username</Kicker>
+          <div className="flex flex-wrap items-center justify-between gap-3"><Kicker color="#22c55e">Invite a player by username</Kicker><span className="font-pixel text-[7px] text-slate-500">AUTO-REFRESH · {lastRefresh ? lastRefresh.toLocaleTimeString() : "CONNECTING"}</span></div>
           <p className="mt-2 text-slate-300">The invited player gets the away team. When they accept, the host presses Start Match and both browsers join the same live friendly.</p>
           <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-            <label><span className="font-pixel text-[8px] text-slate-400">OPPONENT USERNAME</span><input className="px-input mt-1" value={opponent} onChange={(e) => setOpponent(e.target.value)} placeholder="Their username" maxLength={20} /></label>
+            <label><span className="font-pixel text-[8px] text-slate-400">OPPONENT USERNAME</span><input className="px-input mt-1" value={opponent} onChange={(e) => setOpponent(e.target.value)} placeholder="Their username" maxLength={20} autoCapitalize="none" autoCorrect="off" /></label>
             <Picker label="YOUR TEAM" value={hostTeamId} setValue={setHostTeamId} options={TEAMS.map((t) => [t.id, t.name] as const)} />
             <Picker label="THEIR TEAM" value={guestTeamId} setValue={setGuestTeamId} options={TEAMS.filter((t) => t.id !== hostTeamId).map((t) => [t.id, t.name] as const)} />
             <Picker label="STADIUM" value={stadiumId} setValue={setStadiumId} options={STADIUMS.map((s) => [s.id, s.name] as const)} />
@@ -135,12 +159,20 @@ function OnlineLobby({ user, go }: { user: SessionUser; go: (s: Screen) => void 
               <Btn primary className="mt-3 w-full !py-3 !text-[8px]" disabled={busy || !opponent.trim() || hostTeamId === guestTeamId} onClick={invite}>Send invite</Btn>
             </div>
           </div>
-        </Panel>
 
-        {incoming.length > 0 && <MatchList title="Incoming invitations" matches={incoming} user={user} onAccept={accept} onJoin={(id) => go({ name: "online-match", id })} busy={busy} />}
-        {active.length > 0 && <MatchList title="Ready / live matches" matches={active} user={user} onAccept={accept} onJoin={(id) => go({ name: "online-match", id })} busy={busy} />}
-        {outgoing.length > 0 && <MatchList title="Your pending invitations" matches={outgoing} user={user} onAccept={accept} onJoin={(id) => go({ name: "online-match", id })} busy={busy} />}
-        {matches.length === 0 && <p className="mt-5 text-slate-400">No online matches yet. Send a username invite above.</p>}
+          <div className="mt-6 border-t-2 border-white/10 pt-4">
+            <div className="flex items-center justify-between"><Kicker color="#facc15">Active invitation inbox</Kicker><span className="font-pixel text-[7px] text-slate-500">{incoming.length} RECEIVED · {outgoing.length} SENT · {active.length} READY/LIVE</span></div>
+            {visibleMatches.length === 0 ? (
+              <p className="mt-2 text-slate-400">No active invitations. Enter a friend’s exact username above and send one.</p>
+            ) : (
+              <div className="mt-3 grid gap-3 lg:grid-cols-3">
+                <InviteColumn title="Received invites" empty="No incoming invites." matches={incoming} kind="incoming" busy={busy} onAccept={accept} onJoin={(matchId) => go({ name: "online-match", id: matchId })} />
+                <InviteColumn title="Your sent invites" empty="No pending invites sent." matches={outgoing} kind="outgoing" busy={busy} onAccept={accept} onJoin={(matchId) => go({ name: "online-match", id: matchId })} />
+                <InviteColumn title="Ready / live" empty="No accepted matches." matches={active} kind="active" busy={busy} onAccept={accept} onJoin={(matchId) => go({ name: "online-match", id: matchId })} />
+              </div>
+            )}
+          </div>
+        </Panel>
       </Scroll>
     </div>
   );
@@ -148,6 +180,26 @@ function OnlineLobby({ user, go }: { user: SessionUser; go: (s: Screen) => void 
 
 function Picker({ label, value, setValue, options }: { label: string; value: string; setValue: (v: string) => void; options: readonly (readonly [string, string])[] }) {
   return <label><span className="font-pixel text-[8px] text-slate-400">{label}</span><select className="px-input mt-1" value={value} onChange={(e) => setValue(e.target.value)}>{options.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select></label>;
+}
+
+function InviteColumn({ title, empty, matches, kind, busy, onAccept, onJoin }: {
+  title: string;
+  empty: string;
+  matches: OnlineMatch[];
+  kind: "incoming" | "outgoing" | "active";
+  busy: boolean;
+  onAccept: (id: number, action: "accept" | "decline") => void;
+  onJoin: (id: number) => void;
+}) {
+  return <div className="border-2 border-white/10 bg-black/30 p-3"><p className="font-pixel text-[8px] uppercase text-slate-300">{title}</p>{matches.length === 0 ? <p className="mt-2 text-sm text-slate-500">{empty}</p> : <div className="mt-2 space-y-2">{matches.map((m) => {
+    const home = getTeam(m.hostTeamId); const away = getTeam(m.guestTeamId);
+    return <div key={m.id} className="border border-white/15 bg-black/40 p-2">
+      <p className="font-pixel text-[8px] text-white">{home.short} <span className="text-slate-500">V</span> {away.short}</p>
+      <p className="mt-1 text-sm text-slate-300">{kind === "incoming" ? `From ${m.opponentUsername}` : kind === "outgoing" ? `To ${m.opponentUsername}` : m.opponentUsername}</p>
+      <p className={`font-pixel mt-1 text-[7px] uppercase ${m.status === "live" ? "text-green-300" : m.status === "ready" ? "text-yellow-300" : "text-slate-400"}`}>{m.status}</p>
+      <div className="mt-2 flex flex-wrap gap-1">{kind === "incoming" ? <><Btn primary disabled={busy} className="!px-2 !py-2 !text-[7px]" onClick={() => onAccept(m.id, "accept")}>Accept</Btn><Btn danger disabled={busy} className="!px-2 !py-2 !text-[7px]" onClick={() => onAccept(m.id, "decline")}>Decline</Btn></> : <Btn primary className="!px-2 !py-2 !text-[7px]" onClick={() => onJoin(m.id)}>{m.status === "live" ? "Join live" : "Open lobby"}</Btn>}</div>
+    </div>;
+  })}</div>}</div>;
 }
 
 function MatchList({ title, matches, user, onAccept, onJoin, busy }: { title: string; matches: OnlineMatch[]; user: SessionUser; onAccept: (id: number, a: "accept" | "decline") => void; onJoin: (id: number) => void; busy: boolean }) {
