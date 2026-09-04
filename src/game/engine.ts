@@ -1723,41 +1723,6 @@ export class RugbyEngine {
       return;
     }
 
-    // --- New Feature: Slim chance (2.5%) of mid-game injury on tackles ---
-    if (this.rng() < 0.025) {
-      const injuredPlayer = this.rng() < 0.5 ? c : t;
-      injuredPlayer.isInjured = true;
-      injuredPlayer.isOnField = false;
-      injuredPlayer.down = 99; // Stays down on turf
-      injuredPlayer.anim = "injured";
-      
-      this.say("INJURY!", `${injuredPlayer.name} has been injured!`, "#ef4444", 4);
-      this.pushComment(`Injury whistle: ${injuredPlayer.name} is down on the pitch and needs medical attention.`, injuredPlayer.team);
-      import("./audio").then((a) => a.playWhistle()); // Play referee whistle
-
-      // Drop the ball so it's a stoppage/restart
-      this.ball.carrier = null;
-      this.ball.vel = { x: 0, y: 0, z: 0 };
-      this.ball.pos = { x: injuredPlayer.pos.x, y: injuredPlayer.pos.y, z: 0 };
-
-      // Handle CPU-controlled auto-substitution
-      if (this.userTeam !== injuredPlayer.team) {
-        setTimeout(() => {
-          const benchPlayer = this.players.find((p) => p.team === injuredPlayer.team && p.isBench && !p.hasBeenSubbedOff);
-          if (benchPlayer) {
-            this.makeSubstitution(injuredPlayer.team, benchPlayer.number, injuredPlayer.number);
-            this.scheduleRestart("scrum", injuredPlayer.team, injuredPlayer.pos.x, injuredPlayer.pos.y);
-          }
-        }, 1500);
-      } else {
-        // Halt play and prompt the user to make a sub (handled by MatchView interface)
-        this.phase = "whistle";
-        this.phaseTimer = 3.0;
-        this.restart = { kind: "scrum", team: injuredPlayer.team, x: injuredPlayer.pos.x, y: injuredPlayer.pos.y };
-      }
-      return;
-    }
-
     // Track player career tackles
     if (this.playerLockPosition !== null && this.userTeam === t.team && t.number === this.playerLockPosition) {
       this.userTackles++;

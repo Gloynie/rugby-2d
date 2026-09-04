@@ -241,15 +241,7 @@ export function applyMatchResult(state: CareerState, fixtureId: string, result: 
       caps: p.caps + 1,
     };
   });
-  // Random injury chance
-  if (rnd() < 0.15) {
-    const victim = pick(next.roster.filter((p) => p.injuredWeeks === 0));
-    if (victim) {
-      const weeks = 1 + Math.floor(rnd() * 4);
-      next.roster = next.roster.map((p) => p.id === victim.id ? { ...p, injuredWeeks: weeks, fitness: 0 } : p);
-      next.events.unshift({ week: next.week, text: `${victim.name} injured – out for ${weeks} weeks`, type: "injury" });
-    }
-  }
+  // Random injury chance (Disabled - Injuries removed from game)
   // Morale
   next.teamMorale = clamp(next.teamMorale + (won ? 8 : drew ? 0 : -8), 0, 100);
   // Award coins based on result
