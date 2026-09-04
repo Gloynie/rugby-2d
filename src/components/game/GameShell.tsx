@@ -157,7 +157,7 @@ export default function GameShell({ initialUser, initialScreen }: { initialUser:
           </header>
         )}
 
-        <div className={`min-h-0 flex-1 ${inMatch ? "" : "px-6 pb-2 pt-2 md:px-10"}`}>
+        <div className={`min-h-0 flex-1 overflow-y-auto scroll ${inMatch ? "" : "px-6 pb-2 pt-2 md:px-10"}`}>
           {screen.name === "menu" && <MainMenu user={user} go={go} />}
           {screen.name === "play" && (
             <PlaySetup key={screen.tournamentId ?? "quick"} user={user} bindings={bindings} tournamentId={screen.tournamentId} go={go} setInMatch={setInMatch} />

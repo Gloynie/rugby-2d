@@ -323,6 +323,17 @@ export default function PlaySetup({ user, bindings, tournamentId, go, setInMatch
           <Btn onClick={() => setStep(step === "opponent" ? "team" : step === "stadium" ? "opponent" : "stadium")}>← Back</Btn>
         )}
         {step === "stadium" && <Btn primary onClick={() => setStep("settings")}>Continue →</Btn>}
+        {step === "settings" && (
+          <button
+            onClick={() => {
+              setMatchNo((n) => n + 1);
+              setStep("match");
+            }}
+            className="px-btn primary blink !py-3"
+          >
+            START MATCH (KICK OFF) →
+          </button>
+        )}
         <Btn className="ml-auto" onClick={() => (tournament ? go({ name: "hub", id: tournament.id }) : go({ name: "menu" }))}>Cancel</Btn>
       </div>
     </div>
