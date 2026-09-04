@@ -171,6 +171,9 @@ export default function CareerMatch({ careerId, fixtureId, mode, bindings, go }:
             homeColor: kits.home, awayColor: kits.away,
             competition: mode === "player" ? "Player Career" : "Manager Career",
             stadiumId: stadium.id,
+            playerLockPosition: mode === "player" && playerState ? playerState.position : undefined,
+            playerLockName: mode === "player" && playerState ? playerState.playerName : undefined,
+            playerLockAttributes: mode === "player" && playerState ? playerState.attributes : undefined,
           }}
           stadium={stadium}
           competition={mode === "player" ? "Player Career" : "Manager Career"}
@@ -262,12 +265,6 @@ export default function CareerMatch({ careerId, fixtureId, mode, bindings, go }:
               onClick={() => {
                 matchNoRef.current++;
                 setStage("live");
-                // Set lock position on engine instantiation
-                setTimeout(() => {
-                  if (rtRef.current && mode === "player" && playerState) {
-                    rtRef.current.engine.playerLockPosition = playerState.position;
-                  }
-                }, 100);
               }}
               disabled={mode === "manager" && lineup.length < 15}
               className="px-btn primary !py-4 !text-xs blink"

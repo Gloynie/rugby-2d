@@ -241,7 +241,15 @@ export function applyMatchResult(state: CareerState, fixtureId: string, result: 
       caps: p.caps + 1,
     };
   });
-  // Random injury chance (Disabled - Injuries removed from game)
+  // Random injury chance
+  if (rnd() < 0.15) {
+    const victim = pick(next.roster.filter((p) => p.injuredWeeks === 0));
+    if (victim) {
+      const weeks = 1 + Math.floor(rnd() * 4);
+      next.roster = next.roster.map((p) => p.id === victim.id ? { ...p, injuredWeeks: weeks, fitness: 0 } : p);
+      next.events.unshift({ week: next.week, text: `${victim.name} injured – out for ${weeks} weeks`, type: "injury" });
+    }
+  }
   // Morale
   next.teamMorale = clamp(next.teamMorale + (won ? 8 : drew ? 0 : -8), 0, 100);
   // Award coins based on result
@@ -258,24 +266,15 @@ export function applyMatchResult(state: CareerState, fixtureId: string, result: 
 
 /** Advance to next week: recover fatigue, heal injuries, simulate other fixtures */
 export function advanceWeek(state: CareerState): CareerState {
-  const next = { ...state, week: state.week + 1 };
-  next.roster = next.roster.map((p) => {
-    let fatigue = Math.max(0, p.fatigue - 30); // recover 30 per week
-    let fitness = p.fitness;
-    let injuredWeeks = p.injuredWeeks;
-    if (p.injuredWeeks > 0) {
-      injuredWeeks--;
-      fitness = clamp(fitness + 50, 0, 100);
-      if (injuredWeeks === 0) fitness = 100;
-    }
-    return { ...p, fatigue, fitness, injuredWeeks };
-  });
-  // Simulate other fixtures this week
+  const next = { ...state };
+
+  // 1. Simulate all other fixtures for the CURRENT week (state.week)
   next.schedule = next.schedule.map((f) => {
-    if (f.week !== next.week || f.played || f.user) return f;
+    if (f.week !== state.week || f.played || f.home === state.teamId || f.away === state.teamId) return f;
     const home = getTeam(f.home);
     const away = getTeam(f.away);
     const result = simulateMatch(home, away);
+    
     // Update standings
     const homeStanding = next.standings.find((s) => s.teamId === f.home)!;
     const awayStanding = next.standings.find((s) => s.teamId === f.away)!;
@@ -289,6 +288,23 @@ export function advanceWeek(state: CareerState): CareerState {
     if (result.awayTries >= 4) { awayStanding.bp++; awayStanding.pts++; }
     return { ...f, played: true, homeScore: result.homeScore, awayScore: result.awayScore };
   });
+
+  // 2. Increment week
+  next.week = state.week + 1;
+
+  // 3. Recover fatigue, etc.
+  next.roster = next.roster.map((p) => {
+    let fatigue = Math.max(0, p.fatigue - 30); // recover 30 per week
+    let fitness = p.fitness;
+    let injuredWeeks = p.injuredWeeks;
+    if (p.injuredWeeks > 0) {
+      injuredWeeks--;
+      fitness = clamp(fitness + 50, 0, 100);
+      if (injuredWeeks === 0) fitness = 100;
+    }
+    return { ...p, fatigue, fitness, injuredWeeks };
+  });
+
   // Sort standings
   next.standings = [...next.standings].sort((a, b) => b.pts - a.pts || (b.pf - b.pa) - (a.pf - a.pa) || b.pf - a.pf);
   return next;

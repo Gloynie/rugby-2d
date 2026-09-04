@@ -163,6 +163,10 @@ export interface MatchConfig {
   awayBench?: number[];
   /** Speeds up the engine simulation for watch mode (e.g. 1 or 2) */
   spectatorSpeed?: number;
+  // --- New Player Career options ---
+  playerLockPosition?: number;
+  playerLockName?: string;
+  playerLockAttributes?: Attributes;
 }
 
 export interface RefereeState {

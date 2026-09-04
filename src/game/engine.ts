@@ -257,15 +257,28 @@ export class RugbyEngine {
         const activeInGame = isStarter || isBenched;
         if (!activeInGame && i >= 23) continue; // clamp to 23 for simplicity in the match state
 
-        const jerseyNumber = isStarter ? (lineup.indexOf(i) + 1) : (16 + bench.indexOf(i));
-        const attrs = buildAttributes(jerseyNumber, name, data.rating);
+         const jerseyNumber = isStarter ? (lineup.indexOf(i) + 1) : (16 + bench.indexOf(i));
+        
+        let finalName = name;
+        let attrs = buildAttributes(jerseyNumber, name, data.rating);
+        
+        // Overwrite if player lock / Be A Pro custom player
+        const isLockedTeam = t === this.userTeam;
+        if (isLockedTeam && cfg.playerLockPosition && jerseyNumber === cfg.playerLockPosition) {
+          finalName = cfg.playerLockName || name;
+          if (cfg.playerLockAttributes) {
+            attrs = { ...cfg.playerLockAttributes };
+          }
+          this.playerLockPosition = cfg.playerLockPosition;
+        }
+
         const playerRating = Math.round((attrs.speed + attrs.strength + attrs.tackling + attrs.handling + attrs.kicking + attrs.evasion) / 6);
 
         this.players.push({
           id: id++,
           team: t,
           number: jerseyNumber,
-          name,
+          name: finalName,
           pos: { x: 60, y: 35 },
           vel: { x: 0, y: 0 },
           facing: this.teams[t].dir === 1 ? 0 : Math.PI,
@@ -985,10 +998,9 @@ export class RugbyEngine {
       .sort((a, c) => a.pos.y - c.pos.y);
     const n = liners.length;
     if (n > 0) {
-      // Widen defender line gaps to prevent grouping in the center
-      const spacing = n > 1 ? Math.min(8.5, 68 / (n - 1)) : 0;
+      const spacing = n > 1 ? Math.min(6.2, 64 / (n - 1)) : 0;
       const half = ((n - 1) / 2) * spacing;
-      const center = clamp(focus.y, 4 + half, W - 4 - half);
+      const center = clamp(focus.y, 2 + half, W - 2 - half);
       liners.forEach((p, i) => slots[def].set(p.id, center - half + i * spacing));
     }
     return { carrier, focus, att, chasers, slots };
@@ -1161,13 +1173,13 @@ export class RugbyEngine {
 
   private supportOffset(number: number, open: 1 | -1): { dx: number; dy: number } {
     switch (number) {
-      case 9: return { dx: -3.5, dy: -open * 3.5 };
-      case 10: return { dx: -7.5, dy: open * 12 };
-      case 12: return { dx: -10, dy: open * 22 };
-      case 13: return { dx: -12.5, dy: open * 32 };
-      case 14: return open === 1 ? { dx: -13.5, dy: 42 } : { dx: -8.5, dy: 18 };
-      case 11: return open === -1 ? { dx: -13.5, dy: -42 } : { dx: -8.5, dy: -18 };
-      case 15: return { dx: -18, dy: open * 10 };
+      case 9: return { dx: -3, dy: -open * 2.5 };
+      case 10: return { dx: -7, dy: open * 9 };
+      case 12: return { dx: -9, dy: open * 17 };
+      case 13: return { dx: -11, dy: open * 25 };
+      case 14: return open === 1 ? { dx: -12, dy: 33 } : { dx: -7, dy: 12 };
+      case 11: return open === -1 ? { dx: -12, dy: -33 } : { dx: -7, dy: -12 };
+      case 15: return { dx: -16, dy: open * 6 };
       case 1: return { dx: -4, dy: 3.5 };
       case 2: return { dx: -2.5, dy: -3 };
       case 3: return { dx: -4, dy: -6.5 };
