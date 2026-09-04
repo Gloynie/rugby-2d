@@ -75,7 +75,6 @@ export interface PlayerState {
   // --- New features ---
   isOnField: boolean;      // currently on field (true for starting XV or subbed-on)
   isBench: boolean;        // currently on the bench
-  isInjured: boolean;      // got injured and can no longer play
   hasBeenSubbedOff: boolean; // subbed off (cannot re-enter)
   rating: number;          // overall player rating
 }
@@ -148,7 +147,10 @@ export interface InputFrame {
 export interface MatchConfig {
   home: TeamData;
   away: TeamData;
+  /** Locally controlled team (host in an online match). */
   userTeam: TeamIndex | null;
+  /** Second browser-controlled team for invite-based online friendlies. */
+  remoteTeam?: TeamIndex | null;
   halfSeconds: number;
   difficulty: Difficulty;
   homeColor?: string;

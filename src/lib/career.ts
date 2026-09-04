@@ -52,7 +52,7 @@ export interface CareerStanding {
 export interface CareerEvent {
   week: number;
   text: string;
-  type: "result" | "injury" | "news" | "manager" | "press";
+  type: "result" | "news" | "manager" | "press";
 }
 
 export interface CareerState {
@@ -97,53 +97,69 @@ export function buildRoster(team: TeamData): CareerPlayer[] {
   });
 }
 
-/** Generate schedule based on competition type */
+/** Round-robin generator: every side plays exactly once per round. */
+function roundRobin(teamIds: string[]): [string, string][][] {
+  const rotation = [...teamIds];
+  if (rotation.length % 2) rotation.push("BYE");
+  const rounds: [string, string][][] = [];
+  for (let r = 0; r < rotation.length - 1; r++) {
+    const round: [string, string][] = [];
+    for (let i = 0; i < rotation.length / 2; i++) {
+      const home = rotation[i];
+      const away = rotation[rotation.length - 1 - i];
+      if (home !== "BYE" && away !== "BYE") round.push(r % 2 === 0 ? [home, away] : [away, home]);
+    }
+    rounds.push(round);
+    rotation.splice(1, 0, rotation.pop() as string);
+  }
+  return rounds;
+}
+
+/** Generate every fixture in every matchweek, not only the user's fixtures. */
 function generateSchedule(compId: string, teamId: string): CareerFixture[] {
   const comp = getCompetition(compId);
   if (!comp) throw new Error("Unknown competition: " + compId);
   const fixtures: CareerFixture[] = [];
-  const others = comp.teamIds.filter((id) => id !== teamId);
+  let fixtureNo = 1;
 
   if (comp.format === "worldcup") {
-    // Pools + knockout
-    const pool = comp.teamIds.filter((id, i) => i % 4 === comp.teamIds.indexOf(teamId) % 4);
-    pool.forEach((opponent, i) => {
-      if (opponent === teamId) return;
-      fixtures.push({
-        id: `pool-${i}`,
-        week: i + 1,
-        home: rnd() < 0.5 ? teamId : opponent,
-        away: rnd() < 0.5 ? teamId : opponent,
-        played: false,
-        user: true,
-        neutral: true,
+    // Four pools; each pool has three synchronized matchweeks.
+    const pools = Array.from({ length: 4 }, () => [] as string[]);
+    comp.teamIds.forEach((id, i) => pools[i % 4].push(id));
+    const poolRounds = pools.map(roundRobin);
+    for (let week = 0; week < 3; week++) {
+      poolRounds.forEach((rounds, poolIndex) => {
+        rounds[week].forEach(([home, away]) => {
+          fixtures.push({
+            id: `pool-${poolIndex}-${week}-${fixtureNo++}`,
+            week: week + 1,
+            home,
+            away,
+            played: false,
+            user: home === teamId || away === teamId,
+            neutral: true,
+          });
+        });
       });
-    });
-    // Knockout placeholder (will be filled after pools)
-    fixtures.push(
-      { id: "qf", week: pool.length + 1, home: teamId, away: "TBD", played: false, user: true, neutral: true, knockout: "Quarter-final" },
-      { id: "sf", week: pool.length + 2, home: teamId, away: "TBD", played: false, user: true, neutral: true, knockout: "Semi-final" },
-      { id: "f", week: pool.length + 3, home: teamId, away: "TBD", played: false, user: true, neutral: true, knockout: "Final" },
-    );
+    }
   } else {
-    // Round-robin league
-    const rounds = comp.doubleRound ? 2 : 1;
-    let week = 1;
-    for (let r = 0; r < rounds; r++) {
-      for (const opponent of others) {
-        const home = r === 0 ? rnd() < 0.5 : rnd() < 0.5;
+    const firstLeg = roundRobin(comp.teamIds);
+    const allRounds = comp.doubleRound
+      ? [...firstLeg, ...firstLeg.map((round) => round.map(([home, away]) => [away, home] as [string, string]))]
+      : firstLeg;
+    allRounds.forEach((round, weekIndex) => {
+      round.forEach(([home, away]) => {
         fixtures.push({
-          id: `r${r}-${week}`,
-          week,
-          home: home ? teamId : opponent,
-          away: home ? opponent : teamId,
+          id: `round-${weekIndex + 1}-${fixtureNo++}`,
+          week: weekIndex + 1,
+          home,
+          away,
           played: false,
-          user: true,
+          user: home === teamId || away === teamId,
           neutral: false,
         });
-        week++;
-      }
-    }
+      });
+    });
   }
   return fixtures;
 }
@@ -228,7 +244,7 @@ export function applyMatchResult(state: CareerState, fixtureId: string, result: 
   // Bonus points (4 tries)
   if (result.homeTries >= 4) { homeStanding.bp++; homeStanding.pts++; }
   if (result.awayTries >= 4) { awayStanding.bp++; awayStanding.pts++; }
-  // Update roster: fatigue, form, injuries
+  // Update roster: fatigue and form
   next.roster = next.roster.map((p) => {
     const played = userTeam === 0 || userTeam === 1; // TODO: track which players actually played
     if (!played) return p;
@@ -241,15 +257,6 @@ export function applyMatchResult(state: CareerState, fixtureId: string, result: 
       caps: p.caps + 1,
     };
   });
-  // Random injury chance
-  if (rnd() < 0.15) {
-    const victim = pick(next.roster.filter((p) => p.injuredWeeks === 0));
-    if (victim) {
-      const weeks = 1 + Math.floor(rnd() * 4);
-      next.roster = next.roster.map((p) => p.id === victim.id ? { ...p, injuredWeeks: weeks, fitness: 0 } : p);
-      next.events.unshift({ week: next.week, text: `${victim.name} injured – out for ${weeks} weeks`, type: "injury" });
-    }
-  }
   // Morale
   next.teamMorale = clamp(next.teamMorale + (won ? 8 : drew ? 0 : -8), 0, 100);
   // Award coins based on result
@@ -264,13 +271,16 @@ export function applyMatchResult(state: CareerState, fixtureId: string, result: 
   return next;
 }
 
-/** Advance to next week: recover fatigue, heal injuries, simulate other fixtures */
+/** Advance to next week: recover fatigue and simulate other fixtures */
 export function advanceWeek(state: CareerState): CareerState {
   const next = { ...state };
+  // The initial calendar begins at week 1 while state starts at week 0.
+  // Complete the next matchweek after the user has played their fixture.
+  const completedWeek = state.week + 1;
 
-  // 1. Simulate all other fixtures for the CURRENT week (state.week)
+  // 1. Simulate every other fixture in that same matchweek.
   next.schedule = next.schedule.map((f) => {
-    if (f.week !== state.week || f.played || f.home === state.teamId || f.away === state.teamId) return f;
+    if (f.week !== completedWeek || f.played || f.home === state.teamId || f.away === state.teamId) return f;
     const home = getTeam(f.home);
     const away = getTeam(f.away);
     const result = simulateMatch(home, away);
@@ -295,14 +305,7 @@ export function advanceWeek(state: CareerState): CareerState {
   // 3. Recover fatigue, etc.
   next.roster = next.roster.map((p) => {
     let fatigue = Math.max(0, p.fatigue - 30); // recover 30 per week
-    let fitness = p.fitness;
-    let injuredWeeks = p.injuredWeeks;
-    if (p.injuredWeeks > 0) {
-      injuredWeeks--;
-      fitness = clamp(fitness + 50, 0, 100);
-      if (injuredWeeks === 0) fitness = 100;
-    }
-    return { ...p, fatigue, fitness, injuredWeeks };
+    return { ...p, fatigue, fitness: 100, injuredWeeks: 0 };
   });
 
   // Sort standings
@@ -346,8 +349,6 @@ export function playerAction(state: CareerState, playerId: number, action: "prai
 export function trainPlayer(state: CareerState, playerId: number, training: "fitness" | "skills" | "strength"): { state: CareerState; error?: string } {
   const p = state.roster.find((x) => x.id === playerId);
   if (!p) return { state, error: "Player not found" };
-  if (p.injuredWeeks > 0) return { state, error: "Player is injured" };
-  
   const cost = training === "fitness" ? 60 : training === "skills" ? 100 : 80;
   if (state.coins < cost) return { state, error: `Need ${cost} coins (have ${state.coins})` };
   

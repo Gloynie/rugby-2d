@@ -12,6 +12,7 @@ import CareerHub from "./CareerHub";
 import CareerMatch from "./CareerMatch";
 import PlayerCareerStart from "./PlayerCareerStart";
 import PlayerCareerHub from "./PlayerCareerHub";
+import OnlineFriendlies, { OnlineMatchRoom } from "./OnlineFriendlies";
 import MainMenu from "./MainMenu";
 import MenuBackground from "./MenuBackground";
 import PlaySetup from "./PlaySetup";
@@ -32,7 +33,9 @@ export type Screen =
   | { name: "career-hub"; id: number }
   | { name: "career-match"; id: number; fixtureId: string; mode: "manager" | "player" }
   | { name: "player-career-start" }
-  | { name: "player-career-hub"; id: number };
+  | { name: "player-career-hub"; id: number }
+  | { name: "online" }
+  | { name: "online-match"; id: number };
 
 const TABS: { label: string; screen: Screen }[] = [
   { label: "Home", screen: { name: "menu" } },
@@ -42,6 +45,7 @@ const TABS: { label: string; screen: Screen }[] = [
   { label: "Controls", screen: { name: "controls" } },
   { label: "Manager", screen: { name: "career" } },
   { label: "Pro Career", screen: { name: "player-career-start" } },
+  { label: "Online", screen: { name: "online" } },
 ];
 
 export default function GameShell({ initialUser, initialScreen }: { initialUser: SessionUser | null; initialScreen?: Screen }) {
@@ -110,7 +114,7 @@ export default function GameShell({ initialUser, initialScreen }: { initialUser:
           <header className="flex items-center gap-6 px-6 pt-4 pb-2 md:px-10">
             <button onClick={back} className="flex items-center gap-3">
               <span className="font-pixel grid h-9 w-9 place-items-center border-2 border-black bg-yellow-400 text-sm text-black shadow-[3px_3px_0_#000]">R</span>
-              <span className="font-pixel text-sm tracking-[0.2em] text-white drop-shadow-[2px_2px_0_#000] md:text-base">RUGBY 2D</span>
+              <span className="font-pixel text-sm tracking-[0.2em] text-white drop-shadow-[2px_2px_0_#000] md:text-base">PIXELRUGGAS</span>
             </button>
             <nav className="hidden items-center gap-1 md:flex">
               {TABS.map((t) => {
@@ -173,6 +177,8 @@ export default function GameShell({ initialUser, initialScreen }: { initialUser:
           {screen.name === "career-match" && <CareerMatch careerId={screen.id} fixtureId={screen.fixtureId} mode={screen.mode} bindings={bindings} go={go} />}
           {screen.name === "player-career-start" && (user ? <PlayerCareerStart user={user} go={go} /> : <ProfileScreen user={user} setUser={setUser} initialMode="login" go={go} />)}
           {screen.name === "player-career-hub" && <PlayerCareerHub id={screen.id} go={go} />}
+          {screen.name === "online" && <OnlineFriendlies user={user} bindings={bindings} go={go} />}
+          {screen.name === "online-match" && <OnlineMatchRoom id={screen.id} bindings={bindings} go={go} />}
         </div>
 
         {!inMatch && (
@@ -195,7 +201,7 @@ export default function GameShell({ initialUser, initialScreen }: { initialUser:
               </span>
             )}
             <span className="font-pixel ml-auto hidden text-[8px] uppercase tracking-widest text-slate-500 md:block">
-              Rugby 2D · pixel edition · 53 teams · 6 competitions · 19 stadiums
+              PixelRuggas · pixel edition · 53 teams · 6 competitions · 19 stadiums
             </span>
           </footer>
         )}

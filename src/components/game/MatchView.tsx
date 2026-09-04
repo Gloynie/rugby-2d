@@ -12,7 +12,8 @@ interface Props {
   stadium: Stadium;
   competition: string;
   bindings: Bindings;
-  onFinish: (result: MatchResult) => void;
+  /** The engine is supplied for Player Career stat tracking; normal modes can ignore it. */
+  onFinish: (result: MatchResult, engine?: GameRuntime["engine"]) => void;
   onQuit: () => void;
 }
 
@@ -37,7 +38,7 @@ export default function MatchView({ config, stadium, competition, bindings, onFi
       stadium,
       bindings,
       competition,
-      onFinish: (r) => finishRef.current(r),
+      onFinish: (r) => finishRef.current(r, rt.engine),
       onPauseToggle: () => {
         const next = !rt.paused;
         rt.setPaused(next);
@@ -86,8 +87,8 @@ export default function MatchView({ config, stadium, competition, bindings, onFi
   
   // List active on-field players for substitution (user's team)
   const activeOnField = engine?.players.filter((p) => p.team === userTeamIdx && p.isOnField) ?? [];
-  // List bench players who haven't been subbed off or injured yet
-  const benchPlayers = engine?.players.filter((p) => p.team === userTeamIdx && p.isBench && !p.hasBeenSubbedOff && !p.isInjured) ?? [];
+  // List available bench players; a player subbed off cannot return.
+  const benchPlayers = engine?.players.filter((p) => p.team === userTeamIdx && p.isBench && !p.hasBeenSubbedOff) ?? [];
 
   return (
     <div className="relative flex h-full w-full items-center justify-center bg-black">

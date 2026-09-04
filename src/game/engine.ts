@@ -12,6 +12,8 @@ import type {
   TeamData,
   TeamIndex,
   Vec2,
+  RefereeState,
+  TMOState,
 } from "./types";
 
 export const L = 120;
@@ -149,7 +151,38 @@ interface FrameContext {
   slots: [Map<number, number>, Map<number, number>];
 }
 
-import type { RefereeState, TMOState } from "./types";
+/** JSON-safe state sent from an online-match host to the invited opponent. */
+export interface NetworkMatchState {
+  time: number;
+  clock: number;
+  half: 1 | 2;
+  timeUp: boolean;
+  score: [number, number];
+  tries: [number, number];
+  possession: TeamIndex;
+  phase: Phase;
+  phaseTimer: number;
+  finished: boolean;
+  controlled: number;
+  remoteControlled: number;
+  players: PlayerState[];
+  ball: BallState;
+  teams: { dir: 1 | -1; color: string; lineF: number }[];
+  message: { text: string; sub: string; timer: number; color: string };
+  commentary: string[];
+  liveCommentary: { text: string; team: TeamIndex | null; t: number }[];
+  events: MatchEvent[];
+  restart: unknown;
+  ruck: unknown;
+  goalKick: unknown;
+  penalty: unknown;
+  tryInfo: unknown;
+  tryScorer: number | null;
+  lastTackle: unknown;
+  referee: RefereeState;
+  touchJudges: [RefereeState, RefereeState];
+  tmo: TMOState;
+}
 
 export class RugbyEngine {
   teams: [TeamRuntime, TeamRuntime];
@@ -165,7 +198,10 @@ export class RugbyEngine {
   tries: [number, number] = [0, 0];
   possession: TeamIndex = 0;
   userTeam: TeamIndex | null;
+  /** Second browser-controlled team in invite online friendlies. */
+  remoteTeam: TeamIndex | null = null;
   controlled = -1;
+  remoteControlled = -1;
   message = { text: "", sub: "", timer: 0, color: "#ffffff" };
   commentary: string[] = [];
   /** Live play-by-play commentary (shown in overlay) */
@@ -205,6 +241,7 @@ export class RugbyEngine {
 
   constructor(cfg: MatchConfig) {
     this.userTeam = cfg.userTeam;
+    this.remoteTeam = cfg.remoteTeam ?? null;
     this.halfSeconds = cfg.halfSeconds;
     this.difficulty = cfg.difficulty;
     this.spectatorSpeed = cfg.spectatorSpeed ?? 1;
@@ -294,7 +331,6 @@ export class RugbyEngine {
           fatigue: 0,
           isOnField: isStarter,
           isBench: isBenched,
-          isInjured: false,
           hasBeenSubbedOff: false,
           rating: playerRating,
         });
@@ -345,7 +381,7 @@ export class RugbyEngine {
   /** Force a substitution during the game */
   makeSubstitution(team: TeamIndex, onNumber: number, offNumber: number): boolean {
     const playerOff = this.players.find((p) => p.team === team && p.number === offNumber && p.isOnField);
-    const playerOn = this.players.find((p) => p.team === team && p.number === onNumber && p.isBench && !p.hasBeenSubbedOff && !p.isInjured);
+    const playerOn = this.players.find((p) => p.team === team && p.number === onNumber && p.isBench && !p.hasBeenSubbedOff);
     
     if (!playerOff || !playerOn) return false;
     
@@ -392,6 +428,84 @@ export class RugbyEngine {
       events: this.events,
     };
   }
+
+  /** Serialize the host's authoritative game state for an online guest. */
+  exportNetworkState(): NetworkMatchState {
+    const copy = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
+    return {
+      time: this.time,
+      clock: this.clock,
+      half: this.half,
+      timeUp: this.timeUp,
+      score: copy(this.score),
+      tries: copy(this.tries),
+      possession: this.possession,
+      phase: this.phase,
+      phaseTimer: this.phaseTimer,
+      finished: this.finished,
+      controlled: this.controlled,
+      remoteControlled: this.remoteControlled,
+      players: copy(this.players),
+      ball: copy(this.ball),
+      teams: this.teams.map((t) => ({ dir: t.dir, color: t.color, lineF: t.lineF })),
+      message: copy(this.message),
+      commentary: copy(this.commentary),
+      liveCommentary: copy(this.liveCommentary),
+      events: copy(this.events),
+      restart: copy(this.restart),
+      ruck: this.ruck
+        ? { ...copy(this.ruck), joined: this.ruck.joined.map((set) => [...set]) }
+        : null,
+      goalKick: copy(this.goalKick),
+      penalty: copy(this.penalty),
+      tryInfo: copy(this.tryInfo),
+      tryScorer: this.tryScorer,
+      lastTackle: copy(this.lastTackle),
+      referee: copy(this.referee),
+      touchJudges: copy(this.touchJudges),
+      tmo: copy(this.tmo),
+    };
+  }
+
+  /** Apply a received online-host snapshot without discarding engine methods. */
+  importNetworkState(state: NetworkMatchState): void {
+    this.time = state.time;
+    this.clock = state.clock;
+    this.half = state.half;
+    this.timeUp = state.timeUp;
+    this.score = state.score;
+    this.tries = state.tries;
+    this.possession = state.possession;
+    this.phase = state.phase;
+    this.phaseTimer = state.phaseTimer;
+    this.finished = state.finished;
+    this.controlled = state.controlled;
+    this.remoteControlled = state.remoteControlled;
+    this.players = state.players;
+    this.ball = state.ball;
+    state.teams.forEach((saved, i) => {
+      const team = this.teams[i];
+      if (team) Object.assign(team, saved);
+    });
+    this.message = state.message;
+    this.commentary = state.commentary;
+    this.liveCommentary = state.liveCommentary;
+    this.events = state.events;
+    this.restart = state.restart as RestartInfo | null;
+    const rawRuck = state.ruck as (Omit<RuckState, "joined"> & { joined: number[][] }) | null;
+    this.ruck = rawRuck
+      ? { ...rawRuck, joined: [new Set(rawRuck.joined[0]), new Set(rawRuck.joined[1])] }
+      : null;
+    this.goalKick = state.goalKick as GoalKickState | null;
+    this.penalty = state.penalty as PenaltyState | null;
+    this.tryInfo = state.tryInfo as { team: TeamIndex; y: number } | null;
+    this.tryScorer = state.tryScorer;
+    this.lastTackle = state.lastTackle as { tackler: number; carrier: number } | null;
+    this.referee = state.referee;
+    this.touchJudges = state.touchJudges;
+    this.tmo = state.tmo;
+  }
+
   say(text: string, sub = "", color = "#ffffff", duration = 2.6): void {
     this.message = { text, sub, timer: duration, color };
     if (text) {
@@ -586,7 +700,7 @@ export class RugbyEngine {
   }
 
   // ---------- main update ----------
-  update(dt: number, input: InputFrame): void {
+  update(dt: number, input: InputFrame, remoteInput: InputFrame | null = null): void {
     if (this.finished) return;
     // Apply spectator speed multiplier (e.g. 2x speed spectating)
     dt *= this.spectatorSpeed;
@@ -610,10 +724,10 @@ export class RugbyEngine {
     switch (this.phase) {
       case "kickoff":
       case "dropout":
-        this.updateRestartWait(dt, input);
+        this.updateRestartWait(dt, input, remoteInput);
         break;
       case "play":
-        this.updatePlay(dt, input);
+        this.updatePlay(dt, input, remoteInput);
         break;
       case "tackle":
         this.tickClock(dt);
@@ -621,7 +735,7 @@ export class RugbyEngine {
         if (this.phaseTimer <= 0) this.startRuck();
         break;
       case "ruck":
-        this.updateRuck(dt, input);
+        this.updateRuck(dt, input, remoteInput);
         break;
       case "scrum":
       case "lineout":
@@ -642,10 +756,10 @@ export class RugbyEngine {
         }
         break;
       case "goalKick":
-        this.updateGoalKick(dt, input);
+        this.updateGoalKick(dt, input, remoteInput);
         break;
       case "penaltyChoice":
-        this.updatePenaltyChoice(dt, input);
+        this.updatePenaltyChoice(dt, input, remoteInput);
         break;
       case "whistle":
         this.phaseTimer -= dt;
@@ -746,7 +860,6 @@ export class RugbyEngine {
   }
 
   setupKickoff(team: TeamIndex, kind: "kickoff" | "dropout"): void {
-    this.restartWaitTime = 0;
     if (this.timeUp) {
       this.endHalf();
       return;
@@ -798,13 +911,13 @@ export class RugbyEngine {
     }
   }
 
-  private restartWaitTime = 0;
-  private updateRestartWait(dt: number, input: InputFrame): void {
+  private updateRestartWait(dt: number, input: InputFrame, remoteInput: InputFrame | null): void {
     const r = this.restart;
     if (!r) return;
-    this.restartWaitTime += dt;
-    if (this.userTeam === r.team) {
-      if (input.action || this.restartWaitTime > 2.2) this.performRestartKick();
+    // Each human-controlled team waits for that browser's action.
+    const teamInput = r.team === this.userTeam ? input : r.team === this.remoteTeam ? remoteInput : null;
+    if (teamInput) {
+      if (teamInput.action) this.performRestartKick();
     } else {
       this.phaseTimer -= dt;
       if (this.phaseTimer <= 0) this.performRestartKick();
@@ -863,18 +976,22 @@ export class RugbyEngine {
   }
 
   // ---------- open play ----------
-  private updatePlay(dt: number, input: InputFrame): void {
+  private updatePlay(dt: number, input: InputFrame, remoteInput: InputFrame | null): void {
     this.tickClock(dt);
     if (this.ball.carrier !== null) {
       this.carryTime += dt;
       if (this.carryTime > 2.5) this.passChain = 0;
     }
-    this.updateControl(input);
+    this.updateControl(input, remoteInput);
     if (this.userTeam !== null && this.controlled >= 0) {
-      this.handleUserActions(input, dt);
+      this.handleUserActions(input, dt, this.controlled);
       if (this.phase !== "play") return;
     }
-    this.moveAll(dt, input);
+    if (this.remoteTeam !== null && remoteInput && this.remoteControlled >= 0) {
+      this.handleUserActions(remoteInput, dt, this.remoteControlled);
+      if (this.phase !== "play") return;
+    }
+    this.moveAll(dt, input, remoteInput);
     this.separate();
     this.updateBall(dt);
     if (this.phase !== "play") return;
@@ -887,37 +1004,40 @@ export class RugbyEngine {
     this.checkBoundaries(dt);
   }
 
-  private updateControl(input: InputFrame): void {
-    if (this.userTeam === null) return;
-    const ut = this.userTeam;
-    
-    // --- New feature: Player Lock / Be a Pro mode ---
-    if (this.playerLockPosition !== null) {
-      const lockedPlayer = this.pl(ut, this.playerLockPosition);
-      if (lockedPlayer) {
+  private updateControl(input: InputFrame, remoteInput: InputFrame | null): void {
+    if (this.userTeam !== null) this.updateControlForTeam(this.userTeam, input, false);
+    if (this.remoteTeam !== null && remoteInput) this.updateControlForTeam(this.remoteTeam, remoteInput, true);
+  }
+
+  private updateControlForTeam(team: TeamIndex, input: InputFrame, remote: boolean): void {
+    // Player career locks only the local user's team to their created player.
+    if (!remote && this.playerLockPosition !== null && this.userTeam === team) {
+      const lockedPlayer = this.pl(team, this.playerLockPosition);
+      if (lockedPlayer?.isOnField) {
         this.controlled = lockedPlayer.id;
         return;
       }
     }
-
     const b = this.ball;
-    if (b.carrier !== null && this.players[b.carrier].team === ut) {
-      this.controlled = b.carrier;
+    const current = remote ? this.remoteControlled : this.controlled;
+    const set = (id: number) => { if (remote) this.remoteControlled = id; else this.controlled = id; };
+    if (b.carrier !== null && this.players[b.carrier]?.team === team) {
+      set(b.carrier);
       return;
     }
     const focus = b.flight !== "none" && b.target && b.pos.z > 0 ? b.target : { x: b.pos.x, y: b.pos.y };
-    const cur = this.controlled >= 0 ? this.players[this.controlled] : null;
+    const cur = current >= 0 ? this.players[current] : null;
     if (input.switchPlayer) {
-      this.controlled = this.nearestPlayer(ut, focus, this.controlled).id;
+      set(this.nearestPlayer(team, focus, current).id);
       return;
     }
-    if (!cur || cur.team !== ut || cur.down > 0 || cur.busy > 0 || dist(cur.pos, focus) > 28) {
-      this.controlled = this.nearestPlayer(ut, focus).id;
+    if (!cur || cur.team !== team || !cur.isOnField || cur.down > 0 || cur.busy > 0 || dist(cur.pos, focus) > 28) {
+      set(this.nearestPlayer(team, focus).id);
     }
   }
 
-  private handleUserActions(input: InputFrame, dt: number): void {
-    const p = this.players[this.controlled];
+  private handleUserActions(input: InputFrame, dt: number, playerId: number): void {
+    const p = this.players[playerId];
     if (p.down > 0 || p.busy > 0) {
       this.charging = false;
       return;
@@ -977,7 +1097,7 @@ export class RugbyEngine {
       if (this.phase === "ruck") continue;
       if (carrier && carrier.team === t) continue;
       const sorted = this.players
-        .filter((p) => p.team === t && p.down <= 0 && p.busy <= 0 && p.id !== this.controlled)
+        .filter((p) => p.team === t && p.down <= 0 && p.busy <= 0 && p.id !== this.controlled && p.id !== this.remoteControlled)
         .sort((a, c) => dist(a.pos, focus) - dist(c.pos, focus));
       for (let i = 0; i < Math.min(2, sorted.length); i++) chasers[t].add(sorted[i].id);
     }
@@ -1006,7 +1126,7 @@ export class RugbyEngine {
     return { carrier, focus, att, chasers, slots };
   }
 
-  private moveAll(dt: number, input: InputFrame): void {
+  private moveAll(dt: number, input: InputFrame, remoteInput: InputFrame | null): void {
     const ctx = this.buildContext();
     for (const p of this.players) {
       if (!p.isOnField) {
@@ -1023,6 +1143,9 @@ export class RugbyEngine {
       if (p.id === this.controlled) {
         const l = hyp(input.moveX, input.moveY);
         d = { dir: l > 0 ? { x: input.moveX / l, y: input.moveY / l } : { x: 0, y: 0 }, sprint: input.sprint };
+      } else if (remoteInput && p.id === this.remoteControlled) {
+        const l = hyp(remoteInput.moveX, remoteInput.moveY);
+        d = { dir: l > 0 ? { x: remoteInput.moveX / l, y: remoteInput.moveY / l } : { x: 0, y: 0 }, sprint: remoteInput.sprint };
       } else {
         d = this.aiDecide(p, ctx);
         if (this.phase !== "play") return;
@@ -1038,7 +1161,7 @@ export class RugbyEngine {
       maxSpeed *= 0.96;
       if (this.charging && p.id === this.controlled) maxSpeed *= 0.5;
     }
-    if (p.id !== this.controlled && p.team !== this.userTeam) maxSpeed *= this.aiSpeedMult;
+    if (p.id !== this.controlled && p.id !== this.remoteControlled && p.team !== this.userTeam && p.team !== this.remoteTeam) maxSpeed *= this.aiSpeedMult;
     maxSpeed *= 0.8 + 0.2 * (p.stamina / 100);
     const tx = desired.x * maxSpeed;
     const ty = desired.y * maxSpeed;
@@ -1766,13 +1889,13 @@ export class RugbyEngine {
     const joinedAtt = new Set<number>([c.id]);
     const joinedDef = new Set<number>([t.id]);
     const attJoiners = this.players
-      .filter((p) => p.team === att && p.id !== c.id && p.down <= 0 && p.id !== this.controlled)
+      .filter((p) => p.team === att && p.id !== c.id && p.down <= 0 && p.id !== this.controlled && p.id !== this.remoteControlled)
       .sort((a, b) => dist(a.pos, rp) - dist(b.pos, rp))
       .slice(0, 2)
       .filter((p) => dist(p.pos, rp) < 16)
       .map((p) => p.id);
     const defJoiners = this.players
-      .filter((p) => p.team !== att && p.id !== t.id && p.down <= 0 && p.id !== this.controlled)
+      .filter((p) => p.team !== att && p.id !== t.id && p.down <= 0 && p.id !== this.controlled && p.id !== this.remoteControlled)
       .sort((a, b) => dist(a.pos, rp) - dist(b.pos, rp))
       .slice(0, 2)
       .filter((p, i) => dist(p.pos, rp) < (i === 0 ? 6 : 4))
@@ -1801,7 +1924,7 @@ export class RugbyEngine {
     }
   }
 
-  private updateRuck(dt: number, input: InputFrame): void {
+  private updateRuck(dt: number, input: InputFrame, remoteInput: InputFrame | null): void {
     this.tickClock(dt);
     const r = this.ruck;
     if (!r) {
@@ -1823,6 +1946,9 @@ export class RugbyEngine {
       if (p.id === this.controlled) {
         const l = hyp(input.moveX, input.moveY);
         d = { dir: l > 0 ? { x: input.moveX / l, y: input.moveY / l } : { x: 0, y: 0 }, sprint: input.sprint };
+      } else if (remoteInput && p.id === this.remoteControlled) {
+        const l = hyp(remoteInput.moveX, remoteInput.moveY);
+        d = { dir: l > 0 ? { x: remoteInput.moveX / l, y: remoteInput.moveY / l } : { x: 0, y: 0 }, sprint: remoteInput.sprint };
       } else if (r.joined[p.team].has(p.id)) {
         d = { dir: { x: 0, y: 0 }, sprint: false };
       } else if (r.joiners[p.team].includes(p.id)) {
@@ -2044,7 +2170,6 @@ export class RugbyEngine {
 
   // ---------- penalties & goal kicks ----------
   private setupPenaltyChoice(team: TeamIndex, x: number, y: number): void {
-    this.penaltyWaitTime = 0;
     this.resetPlayers();
     const def = other(team);
     const fM = clamp(this.fx(team, x), 6, 108);
@@ -2078,23 +2203,17 @@ export class RugbyEngine {
     if (this.userTeam !== null) this.controlled = this.pl(this.userTeam, 9).id;
   }
 
-  private penaltyWaitTime = 0;
-  private updatePenaltyChoice(dt: number, input: InputFrame): void {
+  private updatePenaltyChoice(dt: number, input: InputFrame, remoteInput: InputFrame | null): void {
     const pen = this.penalty;
     if (!pen) {
       this.phase = "play";
       return;
     }
-    if (this.userTeam === pen.team) {
-      this.penaltyWaitTime += dt;
-      if (input.option1 && pen.canGoal) { this.penaltyWaitTime = 0; this.takePenalty("goal"); return; }
-      if (input.option2) { this.penaltyWaitTime = 0; this.takePenalty("touch"); return; }
-      if (input.option3) { this.penaltyWaitTime = 0; this.takePenalty("tap"); return; }
-      if (this.penaltyWaitTime > 2.5) {
-        this.penaltyWaitTime = 0;
-        this.takePenalty(pen.canGoal && this.rng() < 0.7 ? "goal" : "touch");
-        return;
-      }
+    const teamInput = pen.team === this.userTeam ? input : pen.team === this.remoteTeam ? remoteInput : null;
+    if (teamInput) {
+      if (teamInput.option1 && pen.canGoal) { this.takePenalty("goal"); return; }
+      if (teamInput.option2) { this.takePenalty("touch"); return; }
+      if (teamInput.option3) { this.takePenalty("tap"); return; }
       return;
     }
     pen.timer -= dt;
@@ -2134,7 +2253,6 @@ export class RugbyEngine {
   }
 
   private setupGoalKick(team: TeamIndex, x: number, y: number, kind: "conversion" | "penalty"): void {
-    this.goalKickWait = 0;
     this.resetPlayers();
     this.ruck = null;
     this.penalty = null;
@@ -2169,7 +2287,7 @@ export class RugbyEngine {
     this.goalKick = {
       team, kind, x: kx, y: ky, kickerId: kicker.id, launched: false, scored: false, timer: 0, scoredAt: 0,
       aiTimer: 1.6, distance, requiredPower: this.requiredPower(distance),
-      meter: this.userTeam === team ? { stage: "power", value: 0, dirn: 1, power: 0, accuracy: 0 } : null,
+      meter: (this.userTeam === team || this.remoteTeam === team) ? { stage: "power", value: 0, dirn: 1, power: 0, accuracy: 0 } : null,
     };
     this.phase = "goalKick";
     this.possession = team;
@@ -2177,23 +2295,22 @@ export class RugbyEngine {
     this.say(kind === "conversion" ? "CONVERSION" : "PENALTY KICK", `${kicker.name} – ${Math.round(distance)}m`, "#ffffff", 2);
   }
 
-  private goalKickWait = 0;
-  private updateGoalKick(dt: number, input: InputFrame): void {
+  private updateGoalKick(dt: number, input: InputFrame, remoteInput: InputFrame | null): void {
     const gk = this.goalKick;
     if (!gk) {
       this.phase = "play";
       return;
     }
     if (!gk.launched) {
-      this.goalKickWait += dt;
       if (gk.meter) {
         const m = gk.meter;
+        const kickerInput = gk.team === this.userTeam ? input : gk.team === this.remoteTeam ? remoteInput : null;
         if (m.stage === "power") {
           m.value += m.dirn * dt * 1.2;
           if (m.value >= 1) { m.value = 1; m.dirn = -1; }
           if (m.value <= 0) { m.value = 0; m.dirn = 1; }
-          if (input.action || this.goalKickWait > 3.0) {
-            m.power = input.action ? m.value : gk.requiredPower;
+          if (kickerInput?.action) {
+            m.power = m.value;
             m.stage = "accuracy";
             m.value = 0;
             m.dirn = 1;
@@ -2202,8 +2319,8 @@ export class RugbyEngine {
           m.value += m.dirn * dt * 1.7;
           if (m.value >= 1) { m.value = 1; m.dirn = -1; }
           if (m.value <= 0) { m.value = 0; m.dirn = 1; }
-          if (input.action || this.goalKickWait > 3.0) {
-            m.accuracy = input.action ? m.value : (this.rng() - 0.5) * 0.6;
+          if (kickerInput?.action) {
+            m.accuracy = m.value;
             m.stage = "done";
             this.executeGoalKick(m.power, m.accuracy);
           }

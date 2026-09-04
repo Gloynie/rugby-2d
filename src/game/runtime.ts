@@ -4,7 +4,7 @@ import { Director } from "./director";
 import { RugbyEngine } from "./engine";
 import { IDLE_INPUT, InputManager } from "./input";
 import { Renderer } from "./render";
-import type { MatchConfig, MatchResult, Stadium } from "./types";
+import type { InputFrame, MatchConfig, MatchResult, Stadium } from "./types";
 
 const STEP = 1 / 60;
 
@@ -16,6 +16,10 @@ export interface RuntimeOptions {
   competition: string;
   attract?: boolean;
   skipIntro?: boolean;
+  /** Latest input relayed from the invited online opponent. */
+  remoteInput?: () => InputFrame;
+  /** Called after each authoritative engine step (used to publish online snapshots). */
+  onStep?: (engine: RugbyEngine) => void;
   onFinish?: (result: MatchResult) => void;
   onPauseToggle?: () => void;
 }
@@ -135,9 +139,14 @@ export class GameRuntime {
       this.acc += dt;
       let n = 0;
       while (this.acc >= STEP && n < 4) {
-        this.engine.update(STEP, this.input ? this.input.frame() : IDLE_INPUT);
+        this.engine.update(
+          STEP,
+          this.input ? this.input.frame() : IDLE_INPUT,
+          this.opts.remoteInput?.() ?? null,
+        );
         this.director.afterStep();
         this.checkAudio();
+        this.opts.onStep?.(this.engine);
         this.acc -= STEP;
         n++;
         stepped = true;

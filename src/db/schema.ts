@@ -89,6 +89,29 @@ export const playerCareers = pgTable("player_careers", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+/** Invite-based online friendlies. The host browser advances the authoritative match state; the guest sends input packets and receives snapshots. */
+export const onlineMatches = pgTable("online_matches", {
+  id: serial("id").primaryKey(),
+  hostUserId: integer("host_user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  guestUserId: integer("guest_user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  hostTeamId: varchar("host_team_id", { length: 64 }).notNull(),
+  guestTeamId: varchar("guest_team_id", { length: 64 }).notNull(),
+  stadiumId: varchar("stadium_id", { length: 64 }).notNull(),
+  halfSeconds: integer("half_seconds").notNull().default(180),
+  status: varchar("status", { length: 16 }).notNull().default("invited"), // invited | ready | live | finished | declined | cancelled
+  hostInput: jsonb("host_input").notNull().default({}),
+  guestInput: jsonb("guest_input").notNull().default({}),
+  snapshot: jsonb("snapshot").notNull().default({}),
+  hostSeenAt: timestamp("host_seen_at", { withTimezone: true }).notNull().defaultNow(),
+  guestSeenAt: timestamp("guest_seen_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export type User = typeof users.$inferSelect;
 export type MatchRow = typeof matches.$inferSelect;
 export type TournamentRow = typeof tournaments.$inferSelect;

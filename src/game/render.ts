@@ -217,7 +217,7 @@ export class Renderer {
 
   // ---------- visuals ----------
   computeVisuals(m: RugbyEngine, animDt: number, frozen: boolean, cel?: { team: TeamIndex; pos: Vec2 }): Snapshot {
-    const players: PlayerVisual[] = m.players.map((p) => {
+    const players: PlayerVisual[] = m.players.filter((p) => p.isOnField).map((p) => {
       const speed = frozen ? 0 : hyp(p.vel.x, p.vel.y);
       const tired = p.stamina < 25;
       this.phase[p.id] = (this.phase[p.id] ?? 0) + speed * animDt * (tired ? 1.4 : 1.9);

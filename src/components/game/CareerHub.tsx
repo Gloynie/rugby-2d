@@ -124,16 +124,9 @@ function Overview({ state, next, onPlay, busy }: { state: CareerState; next?: Ca
         ) : <p className="mt-3 text-slate-400">—</p>}
       </Panel>
       <Panel className="p-4">
-        <Kicker>Injuries ({state.roster.filter((p) => p.injuredWeeks > 0).length})</Kicker>
-        <ul className="mt-2 space-y-1">
-          {state.roster.filter((p) => p.injuredWeeks > 0).map((p) => (
-            <li key={p.id} className="flex justify-between text-sm">
-              <span>{p.name}</span>
-              <span className="text-red-300">{p.injuredWeeks}w</span>
-            </li>
-          ))}
-          {state.roster.every((p) => p.injuredWeeks === 0) && <li className="text-slate-500">No injuries.</li>}
-        </ul>
+        <Kicker>Squad availability</Kicker>
+        <p className="mt-2 text-slate-300">{available.length} players available for selection.</p>
+        <p className="mt-1 text-sm text-slate-500">Use Training to improve form, fitness and morale between fixtures.</p>
       </Panel>
       <Panel className="p-4 lg:col-span-2">
         <Kicker>Recent events</Kicker>
@@ -141,7 +134,7 @@ function Overview({ state, next, onPlay, busy }: { state: CareerState; next?: Ca
           {state.events.slice(0, 10).map((e, i) => (
             <li key={i} className="flex gap-3 border-l-2 border-yellow-400/40 pl-2 text-sm">
               <span className="font-pixel text-[8px] text-slate-500">W{e.week}</span>
-              <span className={e.type === "injury" ? "text-red-300" : e.type === "result" ? "text-green-300" : "text-slate-200"}>{e.text}</span>
+              <span className={e.type === "result" ? "text-green-300" : e.type === "manager" ? "text-yellow-200" : "text-slate-200"}>{e.text}</span>
             </li>
           ))}
           {state.events.length === 0 && <li className="text-slate-500">No events yet.</li>}

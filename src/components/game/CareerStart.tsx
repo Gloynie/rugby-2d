@@ -39,7 +39,7 @@ export default function CareerStart({ user, go }: { user: SessionUser; go: (s: a
     <div className="p-8">
       <h1 className="font-pixel mb-4 text-2xl uppercase text-yellow-300">Start Manager Career</h1>
       <p className="mb-6 text-slate-300">
-        Manage a team through a full season or tournament. Pick lineups, talk to players, handle injuries, and watch or simulate every match.
+        Manage a team through a full season or tournament. Pick lineups, talk to players, train the squad, and watch or simulate every match.
       </p>
 
       {error && <p className="mb-4 rounded bg-red-900/50 p-3 text-red-200">{error}</p>}

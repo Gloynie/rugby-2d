@@ -34,13 +34,12 @@ export default function TrainingCenter({ state, onTrainPlayer, onTrainTeam, busy
             <button
               key={p.id}
               onClick={() => setSelected(p.id)}
-              disabled={p.injuredWeeks > 0 || busy}
+              disabled={busy}
               className={`tile p-2 disabled:opacity-40 ${selected === p.id ? "small-selected" : ""}`}
             >
               <PlayerSprite jersey={kits.home} jersey2={kits.away} number={p.number} name={p.name} scale={1.5} />
               <p className="truncate text-center text-[9px]">{p.name.split(" ").slice(-1)[0]}</p>
               <p className="text-center text-[8px] text-slate-400">OVR {p.rating}</p>
-              {p.injuredWeeks > 0 && <p className="text-center text-[8px] text-red-400">Injured</p>}
             </button>
           ))}
         </div>

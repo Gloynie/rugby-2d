@@ -23,6 +23,7 @@ export default function MainMenu({ user, go }: { user: SessionUser | null; go: (
     { id: "howto", title: "How to play", sub: "Laws of the game & tips", screen: { name: "howto" } },
     { id: "career", title: "Manager mode", sub: "Run a club through a full season", screen: { name: "career" } },
     { id: "player-career", title: "Player Career", sub: "Create a customized pro, earn XP and upgrade your rating", screen: { name: "player-career-start" } },
+    { id: "online", title: "Online Friendlies", sub: "Invite a PixelRuggas player by username", screen: { name: "online" } },
   ];
   const [sel, setSel] = useState(0);
   const tilesCount = tiles.length;
@@ -70,7 +71,7 @@ export default function MainMenu({ user, go }: { user: SessionUser | null; go: (
         <div>
           <Kicker>Main menu</Kicker>
           <h1 className="font-pixel text-xl uppercase leading-relaxed drop-shadow-[3px_3px_0_#000] md:text-3xl">
-            {user ? `Welcome back, ${user.username}` : "Welcome to Rugby 2D"}
+            {user ? `Welcome back, ${user.username}` : "Welcome to PixelRuggas"}
           </h1>
         </div>
         <p className="hidden text-right text-slate-300 md:block">
@@ -174,6 +175,18 @@ export default function MainMenu({ user, go }: { user: SessionUser | null; go: (
               <p className="text-slate-300">{tiles[7].sub}</p>
             </div>
             <span className="font-pixel text-xs text-yellow-300">→</span>
+          </div>
+        </button>
+
+        <button className={`${cls(8)} col-span-12 min-h-[104px] border-green-400/60`} onMouseEnter={() => setSel(8)} onClick={() => go(tiles[8].screen)}>
+          <div className="relative flex items-center gap-6 p-5">
+            <div className="font-pixel grid h-14 w-20 place-items-center border-4 border-green-400 bg-green-400/15 text-xs text-green-300">1V1</div>
+            <div className="flex-1">
+              <Kicker color="#4ade80">Multiplayer</Kicker>
+              <h3 className="font-pixel mt-1 text-sm uppercase leading-relaxed">{tiles[8].title}</h3>
+              <p className="text-slate-300">{tiles[8].sub}</p>
+            </div>
+            <span className="font-pixel text-xs text-green-300">Invite →</span>
           </div>
         </button>
       </div>

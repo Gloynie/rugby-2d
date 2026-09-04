@@ -9,7 +9,7 @@ import type { Bindings } from "@/game/controls";
 import type { Screen } from "./GameShell";
 import { Btn, Crest, Kicker, Panel, PlayerSprite, ScreenHeader } from "./ui";
 import MatchView from "./MatchView";
-import { GameRuntime } from "@/game/runtime";
+import type { RugbyEngine } from "@/game/engine";
 
 interface Props {
   careerId: number;
@@ -50,7 +50,7 @@ export default function CareerMatch({ careerId, fixtureId, mode, bindings, go }:
         .then((r) => r.json())
         .then((d: { state: CareerState }) => {
           setManagerState(d.state);
-          const available = d.state.roster.filter((p) => p.injuredWeeks === 0 && p.fitness > 40);
+          const available = d.state.roster.filter((p) => p.fitness > 40);
           const sorted = [...available].sort((a, b) => (b.form + b.fitness * 0.5) - (a.form + a.fitness * 0.5));
           setLineup(sorted.slice(0, 15).map((p) => p.id));
         });
@@ -108,12 +108,11 @@ export default function CareerMatch({ careerId, fixtureId, mode, bindings, go }:
     }
   };
 
-  const onFinish = async (r: MatchResult) => {
+  const onFinish = async (r: MatchResult, runtimeEngine?: RugbyEngine) => {
     const userTeamIdx: 0 | 1 = fixture!.home === state!.teamId ? 0 : 1;
     
     if (mode === "player" && playerState) {
-      // Pull stats from completed engine run
-      const runtimeEngine = rtRef.current?.engine;
+      // Pull stats from the completed locked-player engine.
       const tries = runtimeEngine?.userTries ?? 0;
       const tackles = runtimeEngine?.userTackles ?? 0;
       const passes = runtimeEngine?.userPasses ?? 0;
@@ -150,8 +149,6 @@ export default function CareerMatch({ careerId, fixtureId, mode, bindings, go }:
     setStage("result");
   };
   finishRef.current = onFinish;
-
-  const rtRef = useRef<GameRuntime | null>(null);
 
   if (!state || !fixture || !team || !opponent) return <p className="p-8 font-pixel text-sm text-slate-400">Loading…</p>;
 
@@ -236,11 +233,10 @@ export default function CareerMatch({ careerId, fixtureId, mode, bindings, go }:
                   const p = managerState?.roster.find((r) => r.id === i)!;
                   const inLineup = lineup.includes(i);
                   const disabled = !inLineup && lineup.length >= 15;
-                  const injured = p?.injuredWeeks > 0;
                   return (
                     <button
                       key={i}
-                      disabled={injured || (disabled && !inLineup)}
+                      disabled={disabled && !inLineup}
                       onClick={() => setLineup((L) => inLineup ? L.filter((x) => x !== i) : [...L, i])}
                       className={`tile p-2 text-left disabled:opacity-40 ${inLineup ? "small-selected" : ""}`}
                     >
@@ -248,7 +244,6 @@ export default function CareerMatch({ careerId, fixtureId, mode, bindings, go }:
                       <p className="truncate font-pixel text-[8px] uppercase">{p?.name}</p>
                       <p className="text-[10px] text-slate-400">
                         Form {Math.round(p?.form)} · Fat {Math.round(p?.fatigue)}
-                        {injured && <span className="ml-1 text-red-300">Inj {p.injuredWeeks}w</span>}
                       </p>
                     </button>
                   );
