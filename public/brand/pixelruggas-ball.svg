@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" shape-rendering="crispEdges">
+  <!-- Transparent-background PixelRuggas rugby ball -->
+  <g transform="rotate(-32 64 64)">
+    <!-- stepped black pixel outline -->
+    <path fill="#050806" d="M13 54h6v-7h8v-7h11v-6h15v-6h22v6h15v6h11v7h8v7h6v20h-6v7h-8v7H90v6H75v6H53v-6H38v-6H27v-7h-8v-7h-6z"/>
+    <!-- white ball body -->
+    <path fill="#f8fafc" d="M19 55h6v-7h9v-7h13v-5h34v5h13v7h9v7h6v18h-6v7h-9v7H81v5H47v-5H34v-7h-9v-7h-6z"/>
+    <!-- pixel shading -->
+    <path fill="#d1d5db" d="M19 65h6v8h9v7h13v6h34v-5h13v-7h9v-8h6v7h-6v7h-9v7H81v5H47v-5H34v-7h-9v-7h-6z"/>
+    <path fill="#9ca3af" d="M28 72h8v7h11v6h34v-5h13v-7h8v7h-8v7H81v5H47v-5H36v-7h-8z"/>
+    <!-- crisp green curved centre stripe -->
+    <path fill="#0b4f24" d="M43 36h13v4h16v4h12v5h8v6h6v13h-6v7h-8v5H72v4H55v-4H43v-5h-8v-7h-6V55h6v-6h8z"/>
+    <path fill="#12a93a" d="M47 37h10v5h16v4h10v5h8v6h4v10h-4v6h-8v5H73v4H57v-4H46v-5h-7v-6h-5v-10h5v-6h8z"/>
+    <path fill="#55ee18" d="M50 39h8v5h16v4h8v5h7v6h3v6h-3v6h-7v5h-9v4H58v-4h-9v-5h-7v-6h-3v-6h3v-6h8z"/>
+    <!-- rugby ball seam -->
+    <path fill="#0a0d0a" d="M27 62h13v3h12v3h23v3h13v3h13v4H88v-3H75v-3H52v-3H40v-3H27z"/>
+    <path fill="#ffffff" d="M34 59h12v3h11v3h16v3H57v-3H46v-3H34z"/>
+    <!-- sparse black pixel contour marks -->
+    <path fill="#111827" d="M21 57h4v12h-4zm8-16h7v3h-7zm0 43h7v3h-7zm17-51h12v3H46zm0 62h12v3H46zm35-62h12v3H81zm0 62h12v3H81zm22-38h4v12h-4z"/>
+  </g>
+</svg>
