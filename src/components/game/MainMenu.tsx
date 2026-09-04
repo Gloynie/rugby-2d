@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { COMPETITIONS, STADIUMS, TEAMS, getTeam } from "@/game/data";
 import type { SessionUser } from "@/lib/auth";
 import type { Screen } from "./GameShell";
-import GameMark from "./GameMark";
 import { Kbd, Kicker, PixelImage, RunningSprite } from "./ui";
 
 interface Tile {
@@ -71,7 +70,10 @@ export default function MainMenu({ user, go }: { user: SessionUser | null; go: (
       <div className="mb-3 flex items-end justify-between">
         <div>
           <Kicker>Main menu</Kicker>
-          <GameMark size={62} className="mt-1" />
+          <div className="mt-1 flex items-center gap-3">
+            <span className="font-pixel grid h-14 w-14 place-items-center border-2 border-black bg-yellow-400 text-2xl text-black shadow-[4px_4px_0_#000]">R</span>
+            <span className="font-pixel text-xl tracking-[0.14em] text-white drop-shadow-[3px_3px_0_#000] md:text-2xl">PIXELRUGGAS</span>
+          </div>
           <h1 className="font-pixel mt-2 text-[10px] uppercase leading-relaxed text-slate-200 drop-shadow-[2px_2px_0_#000] md:text-xs">
             {user ? `Welcome back, ${user.username}` : "Choose a mode and kick off"}
           </h1>

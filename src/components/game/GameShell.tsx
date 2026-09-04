@@ -13,7 +13,6 @@ import CareerMatch from "./CareerMatch";
 import PlayerCareerStart from "./PlayerCareerStart";
 import PlayerCareerHub from "./PlayerCareerHub";
 import OnlineFriendlies, { OnlineMatchRoom } from "./OnlineFriendlies";
-import GameMark from "./GameMark";
 import MainMenu from "./MainMenu";
 import MenuBackground from "./MenuBackground";
 import PlaySetup from "./PlaySetup";
@@ -113,8 +112,9 @@ export default function GameShell({ initialUser, initialScreen }: { initialUser:
       <div className="relative z-10 flex h-full flex-col">
         {!inMatch && (
           <header className="flex items-center gap-6 px-6 pt-4 pb-2 md:px-10">
-            <button onClick={back} className="transition hover:brightness-125" aria-label="Return to PixelRuggas home">
-              <GameMark size={38} />
+            <button onClick={back} className="flex items-center gap-3 transition hover:brightness-125" aria-label="Return to PixelRuggas home">
+              <span className="font-pixel grid h-9 w-9 place-items-center border-2 border-black bg-yellow-400 text-sm text-black shadow-[3px_3px_0_#000]">R</span>
+              <span className="font-pixel text-sm tracking-[0.2em] text-white drop-shadow-[2px_2px_0_#000] md:text-base">PIXELRUGGAS</span>
             </button>
             <nav className="hidden items-center gap-1 md:flex">
               {TABS.map((t) => {
