@@ -28,7 +28,7 @@ export default function TrainingCenter({ state, onTrainPlayer, onTrainTeam, busy
             <span className="text-slate-400">coins</span>
           </div>
         </div>
-        <p className="mt-2 text-sm text-slate-300">Pick a player and choose their training focus. Costs fatigue and coins.</p>
+        <p className="mt-2 text-sm text-slate-300">Pick a player and choose their training focus. Costs coins and develops their profile.</p>
         <div className="mt-3 grid grid-cols-5 gap-2 sm:grid-cols-8 lg:grid-cols-10">
           {state.roster.map((p) => (
             <button
@@ -49,7 +49,7 @@ export default function TrainingCenter({ state, onTrainPlayer, onTrainTeam, busy
               <PlayerSprite jersey={kits.home} jersey2={kits.away} number={selectedPlayer.number} name={selectedPlayer.name} scale={3} />
               <div className="flex-1">
                 <p className="font-pixel text-sm">{selectedPlayer.name}</p>
-                <p className="text-sm text-slate-400">OVR {selectedPlayer.rating} · Fatigue {Math.round(selectedPlayer.fatigue)} · Fitness {Math.round(selectedPlayer.fitness)}</p>
+                <p className="text-sm text-slate-400">OVR {selectedPlayer.rating} · Fitness {Math.round(selectedPlayer.fitness)}</p>
               </div>
             </div>
             <div className="mt-3 grid grid-cols-3 gap-2">
@@ -85,7 +85,7 @@ export default function TrainingCenter({ state, onTrainPlayer, onTrainTeam, busy
             className="tile p-3 text-left disabled:opacity-40"
           >
             <p className="font-pixel text-xs">Tactics Session</p>
-            <p className="text-sm text-slate-400">All players +4 form, +10 fatigue</p>
+            <p className="text-sm text-slate-400">All players +4 form</p>
             <p className="mt-1 text-xs text-yellow-300">150 coins</p>
           </button>
           <button
@@ -94,7 +94,7 @@ export default function TrainingCenter({ state, onTrainPlayer, onTrainTeam, busy
             className="tile p-3 text-left disabled:opacity-40"
           >
             <p className="font-pixel text-xs">Intense Training</p>
-            <p className="text-sm text-slate-400">All players +1 OVR, +20 fatigue</p>
+            <p className="text-sm text-slate-400">All players +1 OVR</p>
             <p className="mt-1 text-xs text-yellow-300">180 coins</p>
           </button>
         </div>

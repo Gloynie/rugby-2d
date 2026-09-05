@@ -12,7 +12,7 @@ export const ACTIONS: { id: Action; label: string; desc: string; group: string }
   { id: "down", label: "Move down", desc: "Run down the screen", group: "Movement" },
   { id: "left", label: "Move left", desc: "Run left", group: "Movement" },
   { id: "right", label: "Move right", desc: "Run right", group: "Movement" },
-  { id: "sprint", label: "Sprint", desc: "Hold to sprint – drains stamina", group: "Movement" },
+  { id: "sprint", label: "Sprint", desc: "Hold to accelerate – pace depends on player position", group: "Movement" },
   { id: "passUp", label: "Pass up", desc: "Pass to a team-mate up the screen (always backwards)", group: "Attack" },
   { id: "passDown", label: "Pass down", desc: "Pass to a team-mate down the screen (always backwards)", group: "Attack" },
   { id: "kick", label: "Kick", desc: "Hold to charge a punt, tap for a grubber", group: "Attack" },

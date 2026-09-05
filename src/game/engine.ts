@@ -48,16 +48,17 @@ function hashStr(s: string): number {
 }
 
 const BASES: Record<string, Attributes> = {
-  prop: { speed: 5.6, strength: 95, tackling: 80, handling: 60, kicking: 20, evasion: 40 },
-  hooker: { speed: 6.0, strength: 88, tackling: 82, handling: 66, kicking: 25, evasion: 50 },
-  lock: { speed: 5.9, strength: 90, tackling: 80, handling: 62, kicking: 20, evasion: 45 },
-  flanker: { speed: 6.7, strength: 85, tackling: 90, handling: 70, kicking: 30, evasion: 62 },
-  eight: { speed: 6.7, strength: 90, tackling: 85, handling: 72, kicking: 30, evasion: 64 },
-  nine: { speed: 7.0, strength: 60, tackling: 66, handling: 90, kicking: 76, evasion: 80 },
-  ten: { speed: 6.9, strength: 62, tackling: 66, handling: 90, kicking: 92, evasion: 78 },
-  wing: { speed: 7.7, strength: 68, tackling: 62, handling: 78, kicking: 45, evasion: 88 },
-  centre: { speed: 7.3, strength: 80, tackling: 82, handling: 80, kicking: 50, evasion: 78 },
-  fullback: { speed: 7.5, strength: 66, tackling: 70, handling: 85, kicking: 86, evasion: 82 },
+  // Speed is permanent and role-driven, with clear positional differences.
+  prop: { speed: 5.25, strength: 95, tackling: 80, handling: 60, kicking: 20, evasion: 40 },
+  hooker: { speed: 5.65, strength: 88, tackling: 82, handling: 66, kicking: 25, evasion: 50 },
+  lock: { speed: 5.55, strength: 90, tackling: 80, handling: 62, kicking: 20, evasion: 45 },
+  flanker: { speed: 6.55, strength: 85, tackling: 90, handling: 70, kicking: 30, evasion: 62 },
+  eight: { speed: 6.4, strength: 90, tackling: 85, handling: 72, kicking: 30, evasion: 64 },
+  nine: { speed: 7.25, strength: 60, tackling: 66, handling: 90, kicking: 76, evasion: 82 },
+  ten: { speed: 7.05, strength: 62, tackling: 66, handling: 90, kicking: 92, evasion: 80 },
+  wing: { speed: 8.25, strength: 68, tackling: 62, handling: 78, kicking: 45, evasion: 90 },
+  centre: { speed: 7.65, strength: 80, tackling: 82, handling: 80, kicking: 50, evasion: 80 },
+  fullback: { speed: 8.0, strength: 66, tackling: 70, handling: 85, kicking: 86, evasion: 86 },
 };
 
 export function roleFor(n: number): string {
@@ -324,12 +325,10 @@ export class RugbyEngine {
           down: 0,
           busy: 0,
           tackleCooldown: 0,
-          stamina: 100,
           isForward: jerseyNumber <= 8,
           aiTimer: this.rng() * 0.2,
           anim: "none",
           animUntil: 0,
-          fatigue: 0,
           isOnField: isStarter,
           isBench: isBenched,
           hasBeenSubbedOff: false,
@@ -401,7 +400,6 @@ export class RugbyEngine {
     playerOn.isBench = false;
     playerOn.pos = { ...playerOff.pos };
     playerOn.facing = playerOff.facing;
-    playerOn.stamina = Math.min(100 - playerOn.fatigue, 95); // Starts with fresh legs but slightly worn
     
     // Announce sub
     this.say("SUBSTITUTION", `${playerOff.name} off, ${playerOn.name} on`, this.teams[team].color, 3);
@@ -442,8 +440,7 @@ export class RugbyEngine {
       .map((p) => {
         const stat = this.playerStat(p.id);
         const base = 5.7 + stat.tries * 1.45 + stat.tackles * 0.13 + stat.lineBreaks * 0.7 + stat.metresMade * 0.012 + stat.passes * 0.035;
-        const fatiguePenalty = Math.max(0, p.fatigue - 24) * 0.012;
-        const rating = Math.round(Math.max(4, Math.min(10, base - fatiguePenalty)) * 10) / 10;
+        const rating = Math.round(Math.max(4, Math.min(10, base)) * 10) / 10;
         return { ...stat, metresMade: Math.round(stat.metresMade), rating };
       })
       .sort((a, b) => a.team - b.team || a.number - b.number);
@@ -665,7 +662,6 @@ export class RugbyEngine {
       p.tackleCooldown = 0;
       p.anim = "none";
       p.animUntil = 0;
-      p.stamina = Math.min(100 - p.fatigue, p.stamina + 20);
     }
     this.charging = false;
     this.kickCharge = 0;
@@ -828,10 +824,6 @@ export class RugbyEngine {
     this.timeUp = false;
     this.teams[0].dir = this.teams[0].dir === 1 ? -1 : 1;
     this.teams[1].dir = this.teams[1].dir === 1 ? -1 : 1;
-    for (const p of this.players) {
-      p.fatigue = Math.max(0, p.fatigue - 12);
-      p.stamina = 100 - p.fatigue;
-    }
     this.setupKickoff(other(this.firstHalfKicker), "kickoff");
     this.say("SECOND HALF", "Teams have changed ends");
   }
@@ -1154,13 +1146,12 @@ export class RugbyEngine {
 
   private movePlayer(p: PlayerState, desired: Vec2, sprint: boolean, dt: number): void {
     let maxSpeed = p.attrs.speed;
-    if (sprint && p.stamina > 5) maxSpeed *= 1.25;
+    if (sprint) maxSpeed *= 1.18;
     if (this.ball.carrier === p.id) {
       maxSpeed *= 0.96;
       if (this.charging && p.id === this.controlled) maxSpeed *= 0.5;
     }
     if (p.id !== this.controlled && p.id !== this.remoteControlled && p.team !== this.userTeam && p.team !== this.remoteTeam) maxSpeed *= this.aiSpeedMult;
-    maxSpeed *= 0.8 + 0.2 * (p.stamina / 100);
     const tx = desired.x * maxSpeed;
     const ty = desired.y * maxSpeed;
     const a = 14 * dt;
@@ -1169,13 +1160,6 @@ export class RugbyEngine {
     p.pos.x = clamp(p.pos.x + p.vel.x * dt, -4, L + 4);
     p.pos.y = clamp(p.pos.y + p.vel.y * dt, -4, W + 4);
     if (hyp(desired.x, desired.y) > 0.1) p.facing = Math.atan2(desired.y, desired.x);
-    const moving = hyp(p.vel.x, p.vel.y) > 0.5;
-    if (sprint && moving) {
-      p.stamina = Math.max(0, p.stamina - 9 * dt);
-      p.fatigue = Math.min(40, p.fatigue + 0.3 * dt);
-    } else {
-      p.stamina = Math.min(100 - p.fatigue, p.stamina + 6 * dt);
-    }
   }
 
   private moveTo(p: PlayerState, target: Vec2, sprint: boolean): Decision {
@@ -1663,7 +1647,6 @@ export class RugbyEngine {
     const inAir = b.pos.z > 0.25;
     const pressure = this.nearestOpponentDist(p) < 2.0;
     let knock = 0.01 + (pressure ? 0.04 : 0) + Math.max(0, 85 - p.attrs.handling) / 600;
-    knock += (1 - p.stamina / 100) * 0.03;
     if (b.flight === "kick" && inAir) knock += 0.04;
     if (b.flight === "pass" && b.lastTeam !== null && b.lastTeam !== p.team) {
       knock = this.rng() < 0.5 ? 1 : 0.05;
@@ -1813,7 +1796,6 @@ export class RugbyEngine {
     let p = 0.44 + (t.attrs.tackling - c.attrs.evasion) / 250 + (t.attrs.strength - c.attrs.strength) / 600 + bonus;
     if (c.team === this.userTeam) p += this.difficulty === "easy" ? -0.12 : this.difficulty === "hard" ? 0.06 : 0;
     else if (t.team === this.userTeam) p += this.difficulty === "easy" ? 0.08 : this.difficulty === "hard" ? -0.05 : 0;
-    p -= (1 - t.stamina / 100) * 0.1;
     p += 0.05;
     p = clamp(p, 0.25, 0.95);
     t.tackleCooldown = 1.0;

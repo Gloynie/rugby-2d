@@ -185,6 +185,37 @@ export function playGoal(): void {
   });
 }
 
+/**
+ * Short ceremonial brass/organ cue used under the visual national-anthem lineup.
+ * It is deliberately instrumental: the ceremony identifies the actual national anthem on screen.
+ */
+export function playAnthemCue(team: 0 | 1): void {
+  const c = getCtx();
+  if (!c || !masterGain || !enabled) return;
+  const now = c.currentTime + 0.03;
+  const melody = team === 0 ? [392, 494, 523, 659, 523, 494] : [440, 523, 659, 587, 523, 440];
+  const mg = masterGain;
+  melody.forEach((frequency, i) => {
+    const osc = c.createOscillator();
+    const harmonic = c.createOscillator();
+    const gain = c.createGain();
+    const t = now + i * 0.29;
+    osc.type = "triangle";
+    harmonic.type = "sine";
+    osc.frequency.value = frequency;
+    harmonic.frequency.value = frequency * 2;
+    gain.gain.setValueAtTime(0, t);
+    gain.gain.linearRampToValueAtTime(0.11, t + 0.035);
+    gain.gain.linearRampToValueAtTime(0.065, t + 0.19);
+    gain.gain.linearRampToValueAtTime(0, t + 0.28);
+    osc.connect(gain);
+    harmonic.connect(gain);
+    gain.connect(mg);
+    osc.start(t); harmonic.start(t);
+    osc.stop(t + 0.3); harmonic.stop(t + 0.3);
+  });
+}
+
 /** Simple menu music loop - 4-bar progression */
 export function startMenuMusic(): void {
   const c = getCtx();

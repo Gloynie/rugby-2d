@@ -91,7 +91,7 @@ export default function MainMenu({ user, go }: { user: SessionUser | null; go: (
         <p className="hidden text-right text-slate-300 md:block">
           {TEAMS.length} real teams · {COMPETITIONS.length} competitions · {STADIUMS.length} stadiums
           <br />
-          <span className="text-slate-400">Full rugby union laws · pixel players with fatigue · replays</span>
+          <span className="text-slate-400">Full rugby union laws · position-based pace · replays</span>
         </p>
       </div>
 

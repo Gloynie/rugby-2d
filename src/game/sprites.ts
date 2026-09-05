@@ -10,10 +10,10 @@ export const FOOT_Y = 26;
 export const LIE_S = 28;
 
 export type View = "side" | "front" | "back";
-export type Pose = "idle" | "run" | "runtired" | "tired" | "pass" | "kick" | "dive" | "lie" | "celebrate" | "bind";
+export type Pose = "idle" | "run" | "pass" | "kick" | "dive" | "lie" | "celebrate" | "bind";
 
 export const POSE_FRAMES: Record<Pose, number> = {
-  idle: 2, run: 6, runtired: 6, tired: 2, pass: 1, kick: 1, dive: 1, lie: 1, celebrate: 2, bind: 1,
+  idle: 2, run: 6, pass: 1, kick: 1, dive: 1, lie: 1, celebrate: 2, bind: 1,
 };
 
 export interface Look {
@@ -104,8 +104,7 @@ export function poseParams(pose: Pose, frame: number): Params {
     case "idle":
       if (frame % 2) p.torsoDy = 1;
       break;
-    case "run":
-    case "runtired": {
+    case "run": {
       const t = ((frame % 6) / 6) * Math.PI * 2;
       const s = Math.sin(t);
       const c = Math.cos(t);
@@ -121,20 +120,8 @@ export function poseParams(pose: Pose, frame: number): Params {
       p.liftR = s < -0.3 ? 2 : 0;
       p.swingL = Math.round(-s);
       p.swingR = Math.round(s);
-      if (pose === "runtired") {
-        p.headDy = 1;
-        p.lean = 0;
-      }
       break;
     }
-    case "tired":
-      p.headDy = 1;
-      p.torsoDy = frame % 2 ? 2 : 1;
-      p.armF = 0.6;
-      p.armB = 0.6;
-      p.legF = 0.25;
-      p.legB = -0.25;
-      break;
     case "pass":
       p.armF = 1.5;
       p.armB = 1.4;

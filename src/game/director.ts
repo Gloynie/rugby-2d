@@ -42,13 +42,29 @@ export class Director {
     private opts: DirectorOptions,
   ) {
     this.scene = opts.skipIntro ? "live" : "intro";
-    const corner = Math.random() < 0.5 ? -1 : 1;
-    this.introFrom = { x: 60 + corner * 74, y: 35 + (Math.random() < 0.5 ? -1 : 1) * 44 };
+    // Keep the matchup card on the same camera position that gameplay uses.
+    this.introFrom = { x: 60, y: 35 };
     this.introTo = { x: 60, y: 35 };
   }
 
+  private get internationalFixture(): boolean {
+    return this.engine.teams[0].data.type === "international" && this.engine.teams[1].data.type === "international";
+  }
+
   private get introLength(): number {
-    return this.opts.attract ? 6.5 : 9;
+    // Complete the presentation before normal live gameplay begins.
+    return this.opts.attract ? 6.2 : this.internationalFixture ? 11.25 : 7.55;
+  }
+
+  /** A once-per-stage sound cue consumed by the browser runtime. */
+  ceremonyCue(): "home-anthem" | "away-anthem" | null {
+    if (this.scene !== "intro" || this.opts.attract || !this.internationalFixture) return null;
+    const lineupEnd = 4.9;
+    const homeAnthemEnd = lineupEnd + 1.85;
+    const awayAnthemEnd = homeAnthemEnd + 1.85;
+    if (this.t >= lineupEnd && this.t < homeAnthemEnd) return "home-anthem";
+    if (this.t >= homeAnthemEnd && this.t < awayAnthemEnd) return "away-anthem";
+    return null;
   }
 
   /** Record what the renderer drew this frame so we can replay it later. */
@@ -88,24 +104,80 @@ export class Director {
     const e = this.engine;
     switch (this.scene) {
       case "intro": {
-        const k = easeInOut(clamp(this.t / 5, 0, 1));
-        f.camTarget = { x: lerp(this.introFrom.x, this.introTo.x, k), y: lerp(this.introFrom.y, this.introTo.y, k) };
         f.freeCam = true;
-        f.snapCam = true;
+        // Renderer now eases every framing change for a continuous broadcast-style camera move.
+        f.snapCam = false;
         f.hideHUD = true;
         f.letterbox = 1;
         f.frozen = true;
-        f.drawOverlay = (r) => this.drawIntro(r);
+        const international = this.internationalFixture;
+        const panEnd = this.opts.attract ? 1.2 : 1.65;
+        const walkoutEnd = this.opts.attract ? 2.8 : 4.0;
+        const lineupEnd = walkoutEnd + 0.9;
+        const homeAnthemEnd = lineupEnd + (international && !this.opts.attract ? 1.85 : 0);
+        const awayAnthemEnd = homeAnthemEnd + (international && !this.opts.attract ? 1.85 : 0);
+        const huddleEnd = (international && !this.opts.attract ? awayAnthemEnd : lineupEnd) + 1.05;
+        const positionsEnd = huddleEnd + 1.0;
+
+        if (this.t < panEnd) {
+          // Stadium pan: close enough to remain readable, wide enough to show the packed bowl.
+          const k = easeInOut(clamp(this.t / panEnd, 0, 1));
+          f.zoom = 0.74;
+          f.camSpeed = 1.45;
+          f.camTarget = { x: lerp(38, 82, k), y: 35 + Math.sin(k * Math.PI) * 5 };
+          f.ceremony = { stage: "pan", progress: k };
+          f.drawOverlay = (r) => this.drawStadiumPanLabel(r);
+        } else if (this.t < walkoutEnd) {
+          f.zoom = 0.88;
+          f.camSpeed = 2.15;
+          f.camTarget = { x: 60, y: 42 };
+          f.ceremony = { stage: "walkout", progress: clamp((this.t - panEnd) / (walkoutEnd - panEnd), 0, 1) };
+        } else if (this.t < lineupEnd) {
+          f.zoom = 0.9;
+          f.camSpeed = 2.4;
+          f.camTarget = { x: 60, y: 34 };
+          f.ceremony = { stage: "lineup", progress: clamp((this.t - walkoutEnd) / (lineupEnd - walkoutEnd), 0, 1) };
+        } else if (this.t < homeAnthemEnd) {
+          f.zoom = 0.9;
+          f.camSpeed = 2.6;
+          f.camTarget = { x: 60, y: 34 };
+          f.ceremony = { stage: "lineup", progress: 1, anthemTeam: 0 };
+          f.drawOverlay = (r) => this.drawAnthemCard(r, 0);
+        } else if (this.t < awayAnthemEnd) {
+          f.zoom = 0.9;
+          f.camSpeed = 2.6;
+          f.camTarget = { x: 60, y: 34 };
+          f.ceremony = { stage: "lineup", progress: 1, anthemTeam: 1 };
+          f.drawOverlay = (r) => this.drawAnthemCard(r, 1);
+        } else if (this.t < huddleEnd) {
+          f.zoom = 1.06;
+          f.camSpeed = 2.1;
+          f.camTarget = { x: 60, y: 35 };
+          f.ceremony = { stage: "huddle", progress: clamp((this.t - (international && !this.opts.attract ? awayAnthemEnd : lineupEnd)) / (huddleEnd - (international && !this.opts.attract ? awayAnthemEnd : lineupEnd)), 0, 1) };
+        } else if (this.t < positionsEnd) {
+          f.zoom = 1;
+          f.camSpeed = 3.1;
+          f.camTarget = { x: 60, y: 35 };
+          f.ceremony = { stage: "positions", progress: clamp((this.t - huddleEnd) / (positionsEnd - huddleEnd), 0, 1) };
+        } else {
+          f.zoom = 1;
+          f.camTarget = { x: 60, y: 35 };
+          f.drawOverlay = (r) => this.drawMatchupCard(r, clamp((this.t - positionsEnd) / 0.45, 0, 1));
+        }
         if (this.t >= this.introLength || (skip && !this.opts.attract)) this.scene = "live";
-        f.drawOverlay = (r) => {
-          this.drawIntro(r);
-          r.panel(r.bufW - 90, 34, 84, 18);
-          r.text("PRESS " + keyLabel(this.opts.bindings.action, true) + " TO SKIP", r.bufW - 48, 39, { align: "center", color: "#facc15", size: 8 });
-        };
+        if (!this.opts.attract) {
+          const existing = f.drawOverlay;
+          f.drawOverlay = (r) => {
+            existing?.(r);
+            r.panel(r.bufW - 90, 34, 84, 18);
+            r.text("PRESS " + keyLabel(this.opts.bindings.action, true) + " TO SKIP", r.bufW - 48, 39, { align: "center", color: "#facc15", size: 8 });
+          };
+        }
         break;
       }
       case "live":
         f.stepEngine = true;
+        f.zoom = 1;
         break;
       case "try": {
         const scorer = e.tryScorer !== null ? e.players[e.tryScorer] : null;
@@ -205,6 +277,49 @@ export class Director {
   }
 
   // ---------- overlays ----------
+  private drawStadiumPanLabel(r: Renderer): void {
+    const s = this.stadium;
+    const w = 310;
+    const x = 18;
+    const y = r.bufH - 72;
+    r.panel(x, y, w, 42, { accent: s.accent });
+    r.text(s.name.toUpperCase(), x + 12, y + 8, { size: 8, color: "#facc15" });
+    r.text(`${s.city.toUpperCase()}, ${s.country.toUpperCase()} · ${s.capacity.toLocaleString("en-US")} CAPACITY`, x + 12, y + 24, { color: "#d1d5db" });
+  }
+
+  private drawAnthemCard(r: Renderer, team: 0 | 1): void {
+    const data = this.engine.teams[team].data;
+    const x = r.bufW / 2 - 145;
+    const y = r.bufH - 62;
+    r.panel(x, y, 290, 28, { accent: this.engine.teams[team].color });
+    r.text(`PLEASE STAND FOR ${data.country.toUpperCase()}`, r.bufW / 2, y + 7, { align: "center", size: 8, color: "#facc15" });
+    r.text("NATIONAL ANTHEM", r.bufW / 2, y + 18, { align: "center", color: "#ffffff" });
+  }
+
+  private drawMatchupCard(r: Renderer, progress: number): void {
+    const e = this.engine;
+    const k = easeOut(progress);
+    const w = 380;
+    const h = 96;
+    const x = Math.round(r.bufW / 2 - w / 2);
+    const y = Math.round(r.bufH / 2 - h / 2 + (1 - k) * 24);
+    r.panel(x, y, w, h, { fill: "rgba(8,12,24,0.92)" });
+    r.rect(x, y, w, 3, e.teams[0].color);
+    r.rect(x, y + h - 3, w, 3, e.teams[1].color);
+    r.text(this.opts.competition.toUpperCase(), r.bufW / 2, y + 12, { align: "center", color: "#94a3b8" });
+    const home = e.teams[0].data;
+    const away = e.teams[1].data;
+    r.rect(x + 40, y + 32, 40, 28, e.teams[0].color);
+    r.rect(x + w - 80, y + 32, 40, 28, e.teams[1].color);
+    r.text(home.short, x + 60, y + 42, { size: 8, align: "center", color: lum(e.teams[0].color) > 0.6 ? "#111" : "#fff", shadow: false });
+    r.text(away.short, x + w - 60, y + 42, { size: 8, align: "center", color: lum(e.teams[1].color) > 0.6 ? "#111" : "#fff", shadow: false });
+    r.text("VS", r.bufW / 2, y + 40, { size: 16, align: "center", color: "#facc15" });
+    r.text(home.name.toUpperCase().slice(0, 14), x + 60, y + 66, { align: "center" });
+    r.text(away.name.toUpperCase().slice(0, 14), x + w - 60, y + 66, { align: "center" });
+    r.text(`OVR ${home.rating}`, x + 60, y + 78, { align: "center", color: "#94a3b8" });
+    r.text(`OVR ${away.rating}`, x + w - 60, y + 78, { align: "center", color: "#94a3b8" });
+  }
+
   private teamLine(): string {
     const e = this.engine;
     return `${e.teams[0].data.name.toUpperCase()} V ${e.teams[1].data.name.toUpperCase()}`;

@@ -162,7 +162,7 @@ export default function MatchView({ config, stadium, competition, bindings, onFi
                           onClick={() => setSubOff(p.number)}
                           className={`w-full text-left p-1.5 text-xs rounded border ${subOff === p.number ? "border-yellow-300 bg-yellow-300/10 text-yellow-300" : "border-transparent text-white hover:bg-white/5"}`}
                         >
-                          #{p.number} {p.name.slice(0, 18)} (STA {Math.round(p.stamina)})
+                          #{p.number} {p.name.slice(0, 18)} (PACE {p.attrs.speed.toFixed(1)})
                         </button>
                       ))}
                     </div>

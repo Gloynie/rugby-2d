@@ -195,7 +195,7 @@ function Roster({ state, onAction, busy }: { state: CareerState; onAction: (id: 
               <td className="text-slate-400">{POSITION_NAMES[p.number - 1]}</td>
               <td className="text-right tabular-nums">{p.rating}</td>
               <td className="text-right tabular-nums text-green-300">{Math.round(p.form)}</td>
-              <td className="text-right tabular-nums text-orange-300">{Math.round(p.fatigue)}</td>
+              <td className="text-right tabular-nums text-orange-300">—</td>
               <td className="text-right tabular-nums text-cyan-300">{Math.round(p.morale)}</td>
               <td className="text-right tabular-nums">{Math.round(p.fitness)}</td>
               <td>
@@ -216,8 +216,8 @@ function Roster({ state, onAction, busy }: { state: CareerState; onAction: (id: 
 function Talk({ state, onTalk, busy }: { state: CareerState; onTalk: (t: "motivate" | "relax" | "demand") => void; busy?: string | null }) {
   const options: { id: "motivate" | "relax" | "demand"; title: string; quote: string; effect: string }[] = [
     { id: "motivate", title: "Inspire the squad", quote: "We've worked hard all week. Trust the system. Every one of you belongs on that pitch.", effect: "Morale +, Form slight bump" },
-    { id: "relax", title: "Keep it light", quote: "Shoulders down, lads. Enjoy it. Go out there and play your game.", effect: "Fatigue −, morale slight dip" },
-    { id: "demand", title: "Raise standards", quote: "Not good enough. I expect more from every single one of you this week.", effect: "Form +, fatigue +, morale mixed" },
+    { id: "relax", title: "Keep it light", quote: "Shoulders down, lads. Enjoy it. Go out there and play your game.", effect: "Morale changes slightly" },
+    { id: "demand", title: "Raise standards", quote: "Not good enough. I expect more from every single one of you this week.", effect: "Form +, morale mixed" },
   ];
   return (
     <div className="grid gap-4 md:grid-cols-3">

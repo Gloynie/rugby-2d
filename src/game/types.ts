@@ -31,6 +31,19 @@ export interface Competition {
 }
 
 export type StadiumArchitecture = "classic" | "oval-bowl" | "modern-bowl" | "asymmetric-arch" | "enclosed-roof" | "roofed-bowl" | "open-end";
+export type StadiumBlueprint =
+  | "twickenham" | "stade-de-france" | "aviva" | "principality" | "murrayfield"
+  | "olimpico" | "eden-park" | "ellis-park" | "accor" | "amalfitani"
+  | "suncorp" | "loftus" | "dhl" | "thomond" | "kingsholm"
+  | "franklins" | "sandy-park" | "forsyth-barr" | "velodrome";
+
+/** Recognisable surroundings rendered beyond the stadium bowl in the opening aerial shot. */
+export type StadiumLandmark =
+  | "london-houses" | "paris-skyline" | "dublin-terraces" | "cardiff-city"
+  | "edinburgh-hills" | "rome-pines" | "auckland-skyline" | "joburg-skyline"
+  | "sydney-olympic" | "buenos-aires" | "brisbane-skyline" | "pretoria-hills"
+  | "table-mountain" | "limerick-skyline" | "gloucester-rail" | "northampton-park"
+  | "exeter-hills" | "dunedin-hills" | "marseille-hills";
 
 export interface Stadium {
   id: string;
@@ -43,8 +56,12 @@ export interface Stadium {
   stand: string;
   accent: string;
   night: boolean;
-  /** Pixel venue silhouette inspired by the real stadium's stand and roof shape. */
+  /** Broad structural family used for general backdrop rules. */
   architecture?: StadiumArchitecture;
+  /** Unique geometry recipe for this named real-world venue. */
+  blueprint: StadiumBlueprint;
+  /** Recognisable scenic backdrop for the stadium-wide opening shot. */
+  landmark?: StadiumLandmark;
   /** Optional real-world roof/stand sponsor lettering rendered in pixel form. */
   roofBrand?: string;
 }
@@ -70,14 +87,11 @@ export interface PlayerState {
   down: number;
   busy: number;
   tackleCooldown: number;
-  stamina: number;
   isForward: boolean;
   aiTimer: number;
   /** current one-shot animation and when it ends (engine time) */
   anim: AnimKind;
   animUntil: number;
-  /** long-term fatigue accumulated over the match (caps max stamina) */
-  fatigue: number;
   // --- New features ---
   isOnField: boolean;      // currently on field (true for starting XV or subbed-on)
   isBench: boolean;        // currently on the bench

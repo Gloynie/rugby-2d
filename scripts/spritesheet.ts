@@ -22,7 +22,7 @@ class SoftCanvas {
 
 const look = makeLook("t", "#166534", "#facc15", 12, "Damian de Allende");
 const look2 = makeLook("t2", "#f5f5f5", "#c8102e", 7, "Sam Underhill");
-const poses: Pose[] = ["idle", "run", "tired", "pass", "kick", "dive", "lie", "celebrate", "bind"];
+const poses: Pose[] = ["idle", "run", "pass", "kick", "dive", "lie", "celebrate", "bind"];
 const views: View[] = ["side", "front", "back"];
 const S = 5;
 const cols = 14; const rows = views.length * 2;

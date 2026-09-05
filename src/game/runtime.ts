@@ -49,6 +49,7 @@ export class GameRuntime {
   private prevPhase = "";
   private prevTries = 0;
   private prevScore = 0;
+  private prevCeremonyCue = "";
 
   constructor(private opts: RuntimeOptions) {
     this.engine = new RugbyEngine(opts.config);
@@ -97,6 +98,11 @@ export class GameRuntime {
   private checkAudio(): void {
     const e = this.engine;
     const d = this.director;
+    const ceremonyCue = d.ceremonyCue();
+    if (ceremonyCue && ceremonyCue !== this.prevCeremonyCue) {
+      audio.playAnthemCue(ceremonyCue === "home-anthem" ? 0 : 1);
+    }
+    this.prevCeremonyCue = ceremonyCue ?? "";
     // Start crowd when match is live
     if (d.scene === "live" && !audio.getCrowdActive()) {
       audio.startCrowd();
@@ -134,6 +140,7 @@ export class GameRuntime {
     this.last = now;
     const skip = this.input ? this.input.consumeSkip() : false;
     const frame = this.director.update(dt, skip && !this.paused, this.paused);
+    this.checkAudio();
     let stepped = false;
     if (frame.stepEngine && !this.paused) {
       this.acc += dt;
@@ -145,7 +152,6 @@ export class GameRuntime {
           this.opts.remoteInput?.() ?? null,
         );
         this.director.afterStep();
-        this.checkAudio();
         this.opts.onStep?.(this.engine);
         this.acc -= STEP;
         n++;

@@ -248,7 +248,7 @@ export default function CareerMatch({ careerId, fixtureId, mode, bindings, go }:
                       <PlayerSprite jersey={team.primary} jersey2={team.secondary} number={i + 1} name={name} scale={2} />
                       <p className="truncate font-pixel text-[8px] uppercase">{p?.name}</p>
                       <p className="text-[10px] text-slate-400">
-                        Form {Math.round(p?.form)} · Fat {Math.round(p?.fatigue)}
+                        Form {Math.round(p?.form)} · OVR {p?.rating}
                       </p>
                     </button>
                   );
