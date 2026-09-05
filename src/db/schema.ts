@@ -90,6 +90,17 @@ export const playerCareers = pgTable("player_careers", {
 });
 
 /** Invite-based online friendlies. The host browser advances the authoritative match state; the guest sends input packets and receives snapshots. */
+export const ultimateClubs = pgTable("ultimate_clubs", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  clubName: varchar("club_name", { length: 40 }).notNull(),
+  state: jsonb("state").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const onlineMatches = pgTable("online_matches", {
   id: serial("id").primaryKey(),
   hostUserId: integer("host_user_id")
@@ -102,6 +113,9 @@ export const onlineMatches = pgTable("online_matches", {
   guestTeamId: varchar("guest_team_id", { length: 64 }).notNull(),
   stadiumId: varchar("stadium_id", { length: 64 }).notNull(),
   halfSeconds: integer("half_seconds").notNull().default(180),
+  matchType: varchar("match_type", { length: 16 }).notNull().default("standard"), // standard | ultimate
+  hostSquad: jsonb("host_squad"),
+  guestSquad: jsonb("guest_squad"),
   status: varchar("status", { length: 16 }).notNull().default("invited"), // invited | ready | live | finished | declined | cancelled
   hostInput: jsonb("host_input").notNull().default({}),
   guestInput: jsonb("guest_input").notNull().default({}),

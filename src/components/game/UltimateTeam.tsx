@@ -1,0 +1,150 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import type { Bindings } from "@/game/controls";
+import { getStadium } from "@/game/data";
+import type { MatchResult } from "@/game/types";
+import type { SessionUser } from "@/lib/auth";
+import {
+  PACKS,
+  createAiOpponent,
+  getSquadCards,
+  opponentToTeam,
+  ultimateTeamData,
+  type PackId,
+  type UltimateCard,
+  type UltimateClubState,
+  type UltimateOpponent,
+} from "@/lib/ultimate";
+import type { Screen } from "./GameShell";
+import MatchReport from "./MatchReport";
+import MatchView from "./MatchView";
+import { Btn, Kicker, Panel, ScreenHeader, Scroll } from "./ui";
+
+type Tab = "club" | "squad" | "packs" | "challenges" | "play";
+type ClubSummary = { id: number; clubName: string; coins: number; rating: number; updatedAt: string };
+type Battle = { opponent: UltimateOpponent; mode: "friendly" | "cup" };
+
+const COLOURS = ["#166534", "#1d4ed8", "#b91c1c", "#7c3aed", "#0f766e", "#b45309", "#be123c", "#1e293b"];
+const SEC_COLOURS = ["#facc15", "#f8fafc", "#111827", "#f8fafc", "#f8fafc", "#f8fafc", "#facc15", "#38bdf8"];
+
+export default function UltimateTeam({ user, bindings, go, setInMatch }: { user: SessionUser | null; bindings: Bindings; go: (screen: Screen) => void; setInMatch: (value: boolean) => void }) {
+  const [summaries, setSummaries] = useState<ClubSummary[]>([]);
+  const [clubId, setClubId] = useState<number | null>(null);
+  const [club, setClub] = useState<UltimateClubState | null>(null);
+  const [tab, setTab] = useState<Tab>("club");
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [battle, setBattle] = useState<Battle | null>(null);
+  const [completedBattle, setCompletedBattle] = useState<{ result: MatchResult; opponent: UltimateOpponent } | null>(null);
+  const [packCards, setPackCards] = useState<UltimateCard[] | null>(null);
+  const [reveal, setReveal] = useState(0);
+
+  const loadClub = async (id: number) => {
+    const res = await fetch(`/api/ultimate/${id}`, { cache: "no-store" });
+    const data = await res.json().catch(() => ({})) as { state?: UltimateClubState; error?: string };
+    if (!res.ok || !data.state) { setError(data.error ?? "Could not load your Ultimate Club."); return; }
+    setClub(data.state); setClubId(id);
+  };
+  const load = async () => {
+    if (!user) return;
+    const res = await fetch("/api/ultimate", { cache: "no-store" });
+    const data = await res.json().catch(() => ({})) as { clubs?: ClubSummary[]; error?: string };
+    if (!res.ok) { setError(data.error ?? "Could not load Ultimate Team."); return; }
+    const list = data.clubs ?? [];
+    setSummaries(list);
+    if (list.length && !clubId) await loadClub(list[0].id);
+  };
+  useEffect(() => { void load(); }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setInMatch(Boolean(battle)); return () => setInMatch(false); }, [battle, setInMatch]);
+
+  const commit = async (payload: Record<string, unknown>) => {
+    if (!clubId) return null;
+    setBusy(true); setError(null); setNotice(null);
+    const res = await fetch(`/api/ultimate/${clubId}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+    const data = await res.json().catch(() => ({})) as { state?: UltimateClubState; error?: string; [key: string]: unknown };
+    setBusy(false);
+    if (!res.ok || !data.state) { setError(data.error ?? "Ultimate Team action failed."); return null; }
+    setClub(data.state);
+    return data;
+  };
+
+  if (!user) return <SignInGate go={go} />;
+  if (!club) return <ClubSetup summaries={summaries} onCreated={(id) => void loadClub(id)} go={go} />;
+  if (completedBattle) return <ResultOverlay result={completedBattle.result} club={club} opponent={completedBattle.opponent} onClose={() => { setCompletedBattle(null); setTab("club"); }} />;
+
+  if (battle) {
+    const userSquad = ultimateTeamData(club);
+    const aiSquad = opponentToTeam(battle.opponent);
+    const stadium = getStadium("twickenham");
+    return <div className="fixed inset-0 z-40 bg-black">
+      <MatchView
+        config={{ home: userSquad.team, away: aiSquad.team, userTeam: 0, halfSeconds: 150, difficulty: "normal", homeColor: club.primary, awayColor: aiSquad.team.primary, competition: battle.mode === "cup" ? "ULTIMATE SQUAD CUP" : "ULTIMATE SQUAD BATTLE", stadiumId: stadium.id, homePlayerOverrides: userSquad.overrides, awayPlayerOverrides: aiSquad.overrides }}
+        stadium={stadium}
+        competition={battle.mode === "cup" ? "ULTIMATE SQUAD CUP" : "ULTIMATE SQUAD BATTLE"}
+        bindings={bindings}
+        onQuit={() => setBattle(null)}
+        onFinish={async (result) => {
+          const data = await commit({ action: "record-match", mode: battle.mode, result });
+          if (data) { setCompletedBattle({ result, opponent: battle.opponent }); setBattle(null); }
+        }}
+      />
+    </div>;
+  }
+
+  const totalOvr = Math.round(getSquadCards(club).slice(0, 15).reduce((sum, card) => sum + card.ovr, 0) / 15);
+  return <div className="flex h-full flex-col">
+    <ScreenHeader
+      kicker="PixelRuggas Ultimate Team"
+      title={club.clubName}
+      right={<div className="flex items-center gap-3"><span className="font-pixel border-2 border-yellow-400/70 bg-yellow-400/10 px-3 py-2 text-[9px] text-yellow-300">{club.coins.toLocaleString()} COINS</span><span className="font-pixel text-[9px] text-slate-300">OVR {totalOvr}</span><Btn onClick={() => go({ name: "menu" })}>Menu</Btn></div>}
+    />
+    <div className="mb-3 flex flex-wrap gap-2">
+      {(["club", "squad", "packs", "challenges", "play"] as Tab[]).map((entry) => <Btn key={entry} primary={tab === entry} onClick={() => setTab(entry)}>{entry}</Btn>)}
+    </div>
+    {error && <p className="mb-3 border-2 border-red-500/60 bg-red-950/60 px-4 py-2 text-red-100">{error}</p>}
+    {notice && <p className="mb-3 border-2 border-green-400/60 bg-green-950/60 px-4 py-2 text-green-100">{notice}</p>}
+    <Scroll className="pr-2">
+      {tab === "club" && <ClubHome club={club} onTab={setTab} />}
+      {tab === "squad" && <SquadBuilder club={club} busy={busy} onSave={async (lineup, bench) => { const data = await commit({ action: "save-squad", lineup, bench }); if (data) setNotice("Your matchday 23 is saved."); }} />}
+      {tab === "packs" && <PackRoom club={club} busy={busy} packCards={packCards} reveal={reveal} setReveal={setReveal} onOpen={async (packId) => { const data = await commit({ action: "open-pack", packId }); const cards = data?.packedCards as UltimateCard[] | undefined; if (cards) { setPackCards(cards); setReveal(0); } }} onSell={async (ids) => { const data = await commit({ action: "quick-sell", cardIds: ids }); if (data) setNotice(`Trade complete: +${data.coinsEarned ?? 0} coins.`); }} />}
+      {tab === "challenges" && <Challenges club={club} busy={busy} onClaim={async (id) => { const data = await commit({ action: "claim-challenge", challengeId: id }); if (data) setNotice(`Challenge reward claimed: +${data.reward ?? 0} coins.`); }} />}
+      {tab === "play" && <PlayHub club={club} busy={busy} onBattle={(level) => setBattle({ opponent: createAiOpponent(level), mode: "friendly" })} onCup={async () => { const data = await commit({ action: "start-cup" }); if (data) { setNotice("Squad Cup started."); setTab("club"); } }} onCupBattle={() => club.cup && setBattle({ opponent: club.cup.opponent, mode: "cup" })} onOnline={async (username) => { const data = await inviteUltimate(clubId!, username); if (data.error) setError(data.error); else { setNotice(`Ultimate Team invite sent to ${data.recipient}. Open Online to track it.`); go({ name: "online" }); } }} />}
+    </Scroll>
+    {packCards && <PackReveal cards={packCards} index={reveal} onNext={() => reveal < packCards.length - 1 ? setReveal(reveal + 1) : setPackCards(null)} />}
+  </div>;
+}
+
+function SignInGate({ go }: { go: (screen: Screen) => void }) { return <div className="flex h-full items-center justify-center"><Panel className="max-w-lg p-7 text-center"><Kicker>Ultimate Team</Kicker><h1 className="font-pixel mt-2 text-lg uppercase">Sign in to build your club</h1><p className="mt-3 text-slate-300">Packs, cards, challenges and your Ultimate squad are saved to your PixelRuggas account.</p><Btn primary className="mt-5" onClick={() => go({ name: "profile", mode: "login" })}>Sign in</Btn></Panel></div>; }
+
+function ClubSetup({ summaries, onCreated, go }: { summaries: ClubSummary[]; onCreated: (id: number) => void; go: (screen: Screen) => void }) {
+  const [name, setName] = useState("My Ultimate XV"); const [primary, setPrimary] = useState(COLOURS[0]); const [secondary, setSecondary] = useState(SEC_COLOURS[0]); const [error, setError] = useState<string | null>(null); const [busy, setBusy] = useState(false);
+  const create = async () => { setBusy(true); setError(null); const res = await fetch("/api/ultimate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ clubName: name, primary, secondary }) }); const data = await res.json().catch(() => ({})) as { id?: number; error?: string }; setBusy(false); if (!res.ok || !data.id) { setError(data.error ?? "Could not create club."); return; } onCreated(data.id); };
+  return <div className="flex h-full items-center justify-center"><Panel className="w-[650px] max-w-[95vw] p-7"><Kicker>Start from bronze</Kicker><h1 className="font-pixel mt-2 text-lg uppercase">Create your Ultimate Club</h1><p className="mt-3 text-slate-300">You begin with a low-rated Academy XV, 8 bronze subs and 750 coins. Improve it through matches, packs, challenges and trade-ins.</p>{error && <p className="mt-4 border border-red-500 bg-red-950/60 p-2 text-red-100">{error}</p>}<label className="mt-5 block"><span className="font-pixel text-[8px] text-slate-400">CLUB NAME</span><input className="px-input mt-1" value={name} maxLength={40} onChange={(e) => setName(e.target.value)} /></label><div className="mt-4 grid grid-cols-2 gap-4"><ColourPicker title="PRIMARY" value={primary} setValue={setPrimary} options={COLOURS}/><ColourPicker title="SECONDARY" value={secondary} setValue={setSecondary} options={SEC_COLOURS}/></div>{summaries.length > 0 && <div className="mt-5"><Kicker>Existing clubs</Kicker><div className="mt-2 flex flex-wrap gap-2">{summaries.map((club) => <Btn key={club.id} onClick={() => onCreated(club.id)}>{club.clubName} · OVR {club.rating}</Btn>)}</div></div>}<div className="mt-6 flex gap-3"><Btn primary disabled={busy} onClick={create}>{busy ? "Creating..." : "Create club"}</Btn><Btn onClick={() => go({ name: "menu" })}>Back</Btn></div></Panel></div>;
+}
+function ColourPicker({ title, value, setValue, options }: { title: string; value: string; setValue: (value: string) => void; options: string[] }) { return <div><span className="font-pixel text-[8px] text-slate-400">{title}</span><div className="mt-2 flex flex-wrap gap-2">{options.map((colour) => <button key={colour} onClick={() => setValue(colour)} className="h-8 w-8 border-2 border-black" style={{ background: colour, outline: value === colour ? "2px solid #facc15" : "none" }} aria-label={`${title} ${colour}`}/>)}</div></div>; }
+
+function ClubHome({ club, onTab }: { club: UltimateClubState; onTab: (tab: Tab) => void }) { const cards = getSquadCards(club); const rating = Math.round(cards.slice(0,15).reduce((s,c)=>s+c.ovr,0)/15); const claimed = club.challenges.filter(c=>!c.claimed&&c.progress>=c.target).length; return <div className="grid gap-4 lg:grid-cols-3"><Panel className="p-5 lg:col-span-2" accent={club.primary}><Kicker>Your Ultimate XV</Kicker><div className="mt-3 flex flex-wrap gap-2">{cards.slice(0,15).map(c=><CardMini key={c.instanceId} card={c}/>)}</div><div className="mt-5 flex flex-wrap gap-2"><Btn primary onClick={()=>onTab("play")}>Play Squad Battle</Btn><Btn onClick={()=>onTab("squad")}>Edit squad</Btn><Btn onClick={()=>onTab("packs")}>Open packs</Btn></div></Panel><Panel className="p-5"><Kicker>Club record</Kicker><div className="mt-3 grid grid-cols-2 gap-3 text-center"><Stat n={rating} label="OVR"/><Stat n={club.coins} label="COINS"/><Stat n={`${club.wins}-${club.draws}-${club.losses}`} label="W-D-L"/><Stat n={club.cards.length} label="CARDS"/></div><p className="mt-4 text-sm text-slate-400">{claimed ? `${claimed} challenge reward${claimed>1?"s":""} ready to claim.` : "Keep building through matches and challenges."}</p></Panel><Panel className="p-5 lg:col-span-3"><Kicker>Club activity</Kicker><ul className="mt-3 grid gap-1 md:grid-cols-2">{club.log.slice(0,8).map((item,i)=><li key={i} className="border-l-4 border-yellow-400/50 bg-black/30 px-3 py-1 text-sm text-slate-300">{item}</li>)}</ul></Panel></div>; }
+function Stat({n,label}:{n:number|string;label:string}){return <div className="border border-white/10 bg-black/30 p-2"><p className="font-pixel text-lg text-yellow-300">{typeof n==="number"?n.toLocaleString():n}</p><p className="font-pixel mt-1 text-[7px] text-slate-400">{label}</p></div>}
+
+function SquadBuilder({ club, busy, onSave }: { club: UltimateClubState; busy: boolean; onSave: (lineup: string[], bench: string[]) => Promise<void> }) {
+  const [lineup,setLineup]=useState(club.lineup); const [bench,setBench]=useState(club.bench); const [selected,setSelected]=useState<string|null>(null); const [notice,setNotice]=useState<string|null>(null);
+  useEffect(()=>{setLineup(club.lineup);setBench(club.bench)},[club]);
+  const byId=new Map(club.cards.map(c=>[c.instanceId,c]));
+  const assign=(area:"lineup"|"bench", index:number)=>{if(!selected)return; const target=area==="lineup"?lineup:bench; const sourceLine=lineup.indexOf(selected); const sourceBench=bench.indexOf(selected); const displaced=target[index]; const newLine=[...lineup],newBench=[...bench]; if(sourceLine>=0)newLine[sourceLine]=displaced; else if(sourceBench>=0)newBench[sourceBench]=displaced; if(area==="lineup")newLine[index]=selected;else newBench[index]=selected; setLineup(newLine);setBench(newBench);setNotice("Card moved. Save your matchday 23 when ready.");};
+  const cards=[...club.cards].sort((a,b)=>b.ovr-a.ovr); return <div className="grid gap-4 xl:grid-cols-[1.15fr_.85fr]"><Panel className="p-4"><div className="flex items-center justify-between"><Kicker>Matchday 23</Kicker><Btn primary disabled={busy} onClick={()=>void onSave(lineup,bench)}>Save Squad</Btn></div>{notice&&<p className="mt-2 text-sm text-yellow-200">{notice}</p>}<p className="mt-2 text-slate-400">Select a card in your collection, then click a starter or bench slot to swap it in. Every player card brings their individual rugby attributes into matches.</p><Kicker className="mt-4">Starting XV</Kicker><div className="mt-2 grid grid-cols-3 gap-2 md:grid-cols-5">{lineup.map((id,i)=><SquadSlot key={`l${i}`} label={`#${i+1}`} card={byId.get(id)} selected={selected===id} onClick={()=>selected?assign("lineup",i):setSelected(id)}/>)}</div><Kicker className="mt-4">Bench</Kicker><div className="mt-2 grid grid-cols-4 gap-2 md:grid-cols-8">{bench.map((id,i)=><SquadSlot key={`b${i}`} label={`B${i+1}`} card={byId.get(id)} selected={selected===id} onClick={()=>selected?assign("bench",i):setSelected(id)}/>)}</div></Panel><Panel className="p-4"><Kicker>Club collection · {club.cards.length} cards</Kicker><p className="mt-2 text-sm text-slate-400">Select any card to move it into your squad or trade it in from Packs.</p><div className="mt-3 grid max-h-[560px] grid-cols-2 gap-2 overflow-y-auto pr-1 scroll md:grid-cols-3">{cards.map(card=><button key={card.instanceId} onClick={()=>setSelected(card.instanceId)} className={`text-left ${selected===card.instanceId?"outline outline-2 outline-yellow-300":""}`}><CardMini card={card} detail/></button>)}</div></Panel></div>; }
+function SquadSlot({label,card,selected,onClick}:{label:string;card?:UltimateCard;selected:boolean;onClick:()=>void}){return <button onClick={onClick} className={`min-h-[90px] border-2 p-1 text-left ${selected?"border-yellow-300 bg-yellow-400/10":"border-white/10 bg-black/30 hover:border-white/40"}`}>{card?<><div className="flex justify-between"><span className="font-pixel text-[7px] text-slate-400">{label}</span><span className="font-pixel text-[8px] text-yellow-300">{card.ovr}</span></div><p className="mt-2 truncate text-sm font-bold">{card.name}</p><p className="text-xs text-slate-400">{card.positionName}</p></>:<span className="text-slate-500">{label} EMPTY</span>}</button>}
+
+function PackRoom({club,busy,packCards,reveal,setReveal,onOpen,onSell}:{club:UltimateClubState;busy:boolean;packCards:UltimateCard[]|null;reveal:number;setReveal:(n:number)=>void;onOpen:(id:PackId)=>Promise<void>;onSell:(ids:string[])=>Promise<void>}){const [sell,setSell]=useState<string[]>([]);const protectedIds=new Set([...club.lineup,...club.bench]);return <div className="grid gap-4 lg:grid-cols-[1fr_.9fr]"><Panel className="p-5"><Kicker>Packs</Kicker><p className="mt-2 text-slate-300">Open packs using match coins. Any 80+ pull gets a full walkout reveal.</p><div className="mt-4 grid gap-3 sm:grid-cols-2">{PACKS.map(pack=><div key={pack.id} className="border-2 p-4" style={{borderColor:pack.color,background:`${pack.color}18`}}><p className="font-pixel text-[9px]" style={{color:pack.color}}>{pack.name}</p><p className="mt-2 text-slate-300">{pack.description}</p><p className="mt-3 font-pixel text-sm text-yellow-300">{pack.cost.toLocaleString()} COINS</p><Btn primary className="mt-3 w-full !text-[8px]" disabled={busy||club.coins<pack.cost} onClick={()=>void onOpen(pack.id)}>Open pack</Btn></div>)}</div></Panel><Panel className="p-5"><Kicker>Trade in players</Kicker><p className="mt-2 text-slate-400">Trade unselected cards for coins. Matchday 23 cards are protected; swap them out first if you want to sell.</p><div className="mt-3 max-h-[380px] space-y-1 overflow-y-auto scroll">{club.cards.filter(c=>!protectedIds.has(c.instanceId)).sort((a,b)=>b.ovr-a.ovr).map(card=><label key={card.instanceId} className="flex items-center gap-2 border-b border-white/10 py-1 text-sm"><input type="checkbox" checked={sell.includes(card.instanceId)} onChange={()=>setSell(sell.includes(card.instanceId)?sell.filter(id=>id!==card.instanceId):[...sell,card.instanceId])}/><span className="font-pixel text-[8px] text-yellow-300">{card.ovr}</span><span>{card.name}</span><span className="ml-auto text-slate-500">{card.rarity}</span></label>)}</div><Btn className="mt-4" disabled={busy||!sell.length} onClick={()=>{void onSell(sell);setSell([])}}>Trade selected ({sell.length})</Btn></Panel></div>}
+function PackReveal({cards,index,onNext}:{cards:UltimateCard[];index:number;onNext:()=>void}){const card=cards[index];const walkout=card.ovr>=80;return <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/90 p-6"><div className={`pack-reveal relative w-[520px] max-w-full p-8 text-center ${walkout?"elite":""}`} style={{borderColor:walkout?"#facc15":"#94a3b8"}}><p className="font-pixel text-[9px] uppercase text-slate-400">{walkout?"WALKOUT! ELITE PLAYER":"PACK REVEAL"}</p><div className="mx-auto mt-6 w-64 border-4 bg-gradient-to-b from-slate-800 to-slate-950 p-5" style={{borderColor:walkout?"#facc15":card.rarity==="gold"?"#facc15":"#94a3b8"}}><p className="font-pixel text-5xl text-yellow-300">{card.ovr}</p><p className="font-pixel mt-2 text-[9px] text-slate-400">{card.positionName.toUpperCase()}</p><p className="mt-5 text-2xl font-black uppercase">{card.name}</p><p className="mt-2 text-slate-300">{card.teamName} · {card.country}</p><div className="mt-4 grid grid-cols-2 gap-1 text-left text-sm">{Object.entries(card.ratings).slice(0,8).map(([k,v])=><span key={k} className="border border-white/10 px-2 py-1"><b className="text-yellow-300">{v}</b> {k.toUpperCase().slice(0,4)}</span>)}</div></div><p className="mt-5 text-slate-400">Card {index+1} of {cards.length}</p><Btn primary className="mt-4" onClick={onNext}>{index<cards.length-1?"Reveal next card":"Add to club"}</Btn></div></div>}
+
+function Challenges({club,busy,onClaim}:{club:UltimateClubState;busy:boolean;onClaim:(id:any)=>Promise<void>}){return <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{club.challenges.map(ch=>{const complete=ch.progress>=ch.target;return <Panel key={ch.id} className="p-5" accent={complete&&!ch.claimed?"#facc15":undefined}><Kicker>{ch.claimed?"Claimed":complete?"Completed":"Objective"}</Kicker><h3 className="font-pixel mt-2 text-sm uppercase">{ch.title}</h3><p className="mt-2 text-slate-300">{ch.description}</p><div className="mt-4 h-3 border border-white/20 bg-black/50"><div className="h-full bg-yellow-400" style={{width:`${Math.min(100,ch.progress/ch.target*100)}%`}}/></div><p className="mt-2 text-sm text-slate-400">{ch.progress}/{ch.target} · reward <b className="text-yellow-300">{ch.reward} coins</b></p>{!ch.claimed&&<Btn primary className="mt-4" disabled={!complete||busy} onClick={()=>void onClaim(ch.id)}>Claim reward</Btn>}</Panel>})}</div>}
+
+function PlayHub({club,busy,onBattle,onCup,onCupBattle,onOnline}:{club:UltimateClubState;busy:boolean;onBattle:(level:UltimateOpponent["level"])=>void;onCup:()=>Promise<void>;onCupBattle:()=>void;onOnline:(username:string)=>Promise<void>}){const [opponent,setOpponent]=useState("");return <div className="grid gap-4 lg:grid-cols-3"><Panel className="p-5 lg:col-span-2"><Kicker>Squad Battles</Kicker><p className="mt-2 text-slate-300">Play your Ultimate XV against AI squads. Better opposition means a stronger squad test, while every result pays coins.</p><div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-4">{(["bronze","silver","gold","elite"] as const).map(level=><Btn key={level} primary={level==="silver"} disabled={busy} onClick={()=>onBattle(level)}>{level} AI</Btn>)}</div><div className="mt-6 border-t border-white/10 pt-4"><Kicker>Squad Cup</Kicker>{club.cup?.status==="active"?<><p className="mt-2 text-slate-300">{club.cup.stage.toUpperCase()}: {club.clubName} v {club.cup.opponent.name}</p><Btn primary className="mt-3" onClick={onCupBattle}>Play {club.cup.stage}</Btn></>:club.cup?.status==="champions"?<p className="mt-2 font-pixel text-sm text-yellow-300">SQUAD CUP CHAMPIONS! Start a new club challenge next season.</p>:<><p className="mt-2 text-slate-300">Win a semi-final and final against AI Ultimate squads for a 1,500-coin champion bonus.</p><Btn primary className="mt-3" disabled={busy} onClick={()=>void onCup()}>Start Squad Cup</Btn></>}</div></Panel><Panel className="p-5"><Kicker>Ultimate Online</Kicker><p className="mt-2 text-slate-300">Invite another user by username to play with both players’ saved Ultimate squads.</p><input className="px-input mt-4" placeholder="Opponent username" value={opponent} onChange={e=>setOpponent(e.target.value)} autoCapitalize="none"/><Btn primary className="mt-3 w-full !text-[8px]" disabled={busy||!opponent.trim()} onClick={()=>void onOnline(opponent)}>Invite Ultimate opponent</Btn><p className="mt-3 text-sm text-slate-500">Your selected matchday 23 is locked into the invite when it is sent.</p></Panel></div>}
+
+function CardMini({card,detail=false}:{card:UltimateCard;detail?:boolean}){const rarity={bronze:"#b7791f",silver:"#94a3b8",gold:"#facc15",elite:"#a78bfa"}[card.rarity];return <div className="min-w-0 border-2 bg-black/50 p-2" style={{borderColor:rarity}}><div className="flex justify-between"><span className="font-pixel text-[7px] text-slate-400">#{card.position}</span><span className="font-pixel text-[9px]" style={{color:rarity}}>{card.ovr}</span></div><p className="mt-1 truncate text-sm font-bold">{card.name}</p><p className="truncate text-xs text-slate-400">{card.teamName}</p>{detail&&<div className="mt-1 flex justify-between text-[10px] text-slate-300"><span>PAC {card.ratings.pace}</span><span>PHY {card.ratings.physicality}</span></div>}</div>}
+
+function ResultOverlay({result,club,opponent,onClose}:{result:MatchResult;club:UltimateClubState;opponent:UltimateOpponent;onClose:()=>void}){const home=ultimateTeamData(club).team;const away=opponentToTeam(opponent).team;return <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 p-4"><Panel className="max-h-[92vh] w-[1000px] max-w-full overflow-y-auto p-6 scroll"><Kicker>Ultimate match complete</Kicker><h2 className="font-pixel mt-2 text-lg text-yellow-300">{home.short} {result.homeScore} - {result.awayScore} {away.short}</h2><div className="mt-5"><MatchReport result={result} home={home} away={away} homeColor={home.primary} awayColor={away.primary}/></div><Btn primary className="mt-5" onClick={onClose}>Return to Ultimate Team</Btn></Panel></div>}
+
+async function inviteUltimate(ultimateClubId:number,opponentUsername:string):Promise<{recipient?:string;error?:string}>{const res=await fetch("/api/online-friendlies",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({opponentUsername,matchType:"ultimate",ultimateClubId,stadiumId:"twickenham",halfSeconds:150})});return res.json().catch(()=>({error:"Could not send Ultimate invite."}));}

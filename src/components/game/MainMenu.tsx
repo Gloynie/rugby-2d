@@ -25,6 +25,7 @@ export default function MainMenu({ user, go }: { user: SessionUser | null; go: (
     { id: "career", title: "Manager mode", sub: "Run a club through a full season", screen: { name: "career" }, comingSoon: true },
     { id: "player-career", title: "Player Career", sub: "Create a customized pro, earn XP and upgrade your rating", screen: { name: "player-career-start" }, comingSoon: true },
     { id: "online", title: "Online Friendlies", sub: "Invite a PixelRuggas player by username", screen: { name: "online" } },
+    { id: "ultimate", title: "Ultimate Team", sub: "Build your XV, open packs and chase elite rugby cards", screen: { name: "ultimate" } },
   ];
   const [sel, setSel] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
@@ -192,7 +193,7 @@ export default function MainMenu({ user, go }: { user: SessionUser | null; go: (
           <div className="font-pixel absolute inset-0 grid place-items-center bg-black/55 text-xs uppercase tracking-widest text-yellow-300">Coming Soon</div>
         </button>
 
-        <button className={`${cls(8)} col-span-12 min-h-[104px] border-green-400/60`} onMouseEnter={() => setSel(8)} onClick={() => go(tiles[8].screen)}>
+        <button className={`${cls(8)} col-span-12 min-h-[104px] border-green-400/60`} onMouseEnter={() => setSel(8)} onClick={() => openTile(tiles[8])}>
           <div className="relative flex items-center gap-6 p-5">
             <div className="font-pixel grid h-14 w-20 place-items-center border-4 border-green-400 bg-green-400/15 text-xs text-green-300">1V1</div>
             <div className="flex-1">
@@ -201,6 +202,18 @@ export default function MainMenu({ user, go }: { user: SessionUser | null; go: (
               <p className="text-slate-300">{tiles[8].sub}</p>
             </div>
             <span className="font-pixel text-xs text-green-300">Invite →</span>
+          </div>
+        </button>
+
+        <button className={`${cls(9)} col-span-12 min-h-[104px] border-yellow-400/60`} onMouseEnter={() => setSel(9)} onClick={() => openTile(tiles[9])}>
+          <div className="relative flex items-center gap-6 p-5">
+            <div className="font-pixel grid h-14 w-20 place-items-center border-4 border-yellow-400 bg-yellow-400/15 text-xs text-yellow-300">UT</div>
+            <div className="flex-1">
+              <Kicker>Build your club</Kicker>
+              <h3 className="font-pixel mt-1 text-sm uppercase leading-relaxed">{tiles[9].title}</h3>
+              <p className="text-slate-300">{tiles[9].sub}</p>
+            </div>
+            <span className="font-pixel text-xs text-yellow-300">Build →</span>
           </div>
         </button>
       </div>

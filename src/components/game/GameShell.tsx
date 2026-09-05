@@ -13,6 +13,7 @@ import CareerMatch from "./CareerMatch";
 import PlayerCareerStart from "./PlayerCareerStart";
 import PlayerCareerHub from "./PlayerCareerHub";
 import OnlineFriendlies, { OnlineMatchRoom } from "./OnlineFriendlies";
+import UltimateTeam from "./UltimateTeam";
 import MainMenu from "./MainMenu";
 import MenuBackground from "./MenuBackground";
 import PlaySetup from "./PlaySetup";
@@ -35,7 +36,8 @@ export type Screen =
   | { name: "player-career-start" }
   | { name: "player-career-hub"; id: number }
   | { name: "online" }
-  | { name: "online-match"; id: number };
+  | { name: "online-match"; id: number }
+  | { name: "ultimate" };
 
 const TABS: { label: string; screen: Screen }[] = [
   { label: "Home", screen: { name: "menu" } },
@@ -43,6 +45,7 @@ const TABS: { label: string; screen: Screen }[] = [
   { label: "Compete", screen: { name: "competitions" } },
   { label: "Squads", screen: { name: "squads" } },
   { label: "Controls", screen: { name: "controls" } },
+  { label: "Ultimate", screen: { name: "ultimate" } },
   { label: "Online", screen: { name: "online" } },
 ];
 
@@ -177,6 +180,7 @@ export default function GameShell({ initialUser, initialScreen }: { initialUser:
           {screen.name === "player-career-hub" && <PlayerCareerHub id={screen.id} go={go} />}
           {screen.name === "online" && <OnlineFriendlies user={user} bindings={bindings} go={go} />}
           {screen.name === "online-match" && <OnlineMatchRoom id={screen.id} bindings={bindings} go={go} />}
+          {screen.name === "ultimate" && <UltimateTeam user={user} bindings={bindings} go={go} setInMatch={setInMatch} />}
         </div>
 
         {!inMatch && (

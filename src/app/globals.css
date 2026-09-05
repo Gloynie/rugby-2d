@@ -157,3 +157,39 @@ body {
     transform: translateX(-50%);
   }
 }
+
+.pack-reveal {
+  border: 3px solid #94a3b8;
+  background: radial-gradient(circle at 50% 28%, #26364e 0%, #0b1020 48%, #030712 100%);
+  box-shadow: 8px 8px 0 #000;
+}
+.pack-reveal.elite {
+  animation: packWalkout 1.25s cubic-bezier(.16,.84,.34,1) both, elitePulse 1.7s ease-in-out infinite 1.25s;
+  background: radial-gradient(circle at 50% 28%, #6b4e16 0%, #201807 45%, #030712 100%);
+  box-shadow: 0 0 0 3px #facc15, 0 0 60px rgba(250,204,21,.75), 8px 8px 0 #000;
+}
+.pack-reveal.elite::before,
+.pack-reveal.elite::after {
+  content: "";
+  position: absolute;
+  inset: -30px;
+  pointer-events: none;
+  background: repeating-linear-gradient(90deg, transparent 0 24px, rgba(250,204,21,.3) 25px 27px, transparent 28px 54px);
+  animation: eliteRays 1.4s linear infinite;
+}
+.pack-reveal.elite::after {
+  transform: rotate(90deg);
+  animation-direction: reverse;
+}
+@keyframes packWalkout {
+  0% { opacity: 0; transform: translateY(90px) scale(.45); filter: brightness(3); }
+  58% { opacity: 1; transform: translateY(-8px) scale(1.06); filter: brightness(1.35); }
+  100% { opacity: 1; transform: translateY(0) scale(1); filter: brightness(1); }
+}
+@keyframes elitePulse {
+  50% { box-shadow: 0 0 0 3px #fef08a, 0 0 88px rgba(250,204,21,.95), 8px 8px 0 #000; }
+}
+@keyframes eliteRays {
+  from { transform: translateX(-30px); }
+  to { transform: translateX(30px); }
+}

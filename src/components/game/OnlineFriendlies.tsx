@@ -7,7 +7,7 @@ import { getStadium, getTeam, pickKits, STADIUMS, TEAMS } from "@/game/data";
 import { RugbyEngine, type NetworkMatchState } from "@/game/engine";
 import { GameRuntime, loadPixelFonts } from "@/game/runtime";
 import { LIVE_FRAME, Renderer, VIEW_H, VIEW_W } from "@/game/render";
-import type { InputFrame, MatchConfig, MatchResult } from "@/game/types";
+import type { InputFrame, MatchConfig, MatchPlayerOverride, MatchResult, TeamData } from "@/game/types";
 import type { SessionUser } from "@/lib/auth";
 import type { Screen } from "./GameShell";
 import MatchReport from "./MatchReport";
@@ -15,6 +15,7 @@ import { Btn, Crest, Kicker, Panel, ScreenHeader, Scroll } from "./ui";
 
 type OnlineStatus = "invited" | "ready" | "live" | "finished" | "declined" | "cancelled";
 type Role = "host" | "guest";
+type StoredUltimateSquad = { team: TeamData; overrides: MatchPlayerOverride[] };
 
 type OnlineMatch = {
   id: number;
@@ -24,6 +25,9 @@ type OnlineMatch = {
   guestTeamId: string;
   stadiumId: string;
   halfSeconds: number;
+  matchType?: "standard" | "ultimate";
+  hostSquad?: StoredUltimateSquad | null;
+  guestSquad?: StoredUltimateSquad | null;
   status: OnlineStatus;
   role: Role;
   opponentUsername: string;
@@ -46,6 +50,13 @@ const parseFrame = (packet: InputPacket | null | undefined): InputFrame => {
     switchPlayer: !!f.switchPlayer, option1: !!f.option1, option2: !!f.option2, option3: !!f.option3,
   };
 };
+
+function onlineSides(match: OnlineMatch): { home: TeamData; away: TeamData; homeOverrides?: MatchPlayerOverride[]; awayOverrides?: MatchPlayerOverride[] } {
+  if (match.matchType === "ultimate" && match.hostSquad?.team && match.guestSquad?.team) {
+    return { home: match.hostSquad.team, away: match.guestSquad.team, homeOverrides: match.hostSquad.overrides, awayOverrides: match.guestSquad.overrides };
+  }
+  return { home: getTeam(match.hostTeamId), away: getTeam(match.guestTeamId) };
+}
 
 export default function OnlineFriendlies({ user, bindings, go }: { user: SessionUser | null; bindings: Bindings; go: (s: Screen) => void }) {
   if (!user) {
@@ -193,7 +204,7 @@ function InviteColumn({ title, empty, matches, kind, busy, onAccept, onJoin }: {
   onJoin: (id: number) => void;
 }) {
   return <div className="border-2 border-white/10 bg-black/30 p-3"><p className="font-pixel text-[8px] uppercase text-slate-300">{title}</p>{matches.length === 0 ? <p className="mt-2 text-sm text-slate-500">{empty}</p> : <div className="mt-2 space-y-2">{matches.map((m) => {
-    const home = getTeam(m.hostTeamId); const away = getTeam(m.guestTeamId);
+    const { home, away } = onlineSides(m);
     return <div key={m.id} className="border border-white/15 bg-black/40 p-2">
       <p className="font-pixel text-[8px] text-white">{home.short} <span className="text-slate-500">V</span> {away.short}</p>
       <p className="mt-1 text-sm text-slate-300">{kind === "incoming" ? `From ${m.opponentUsername}` : kind === "outgoing" ? `To ${m.opponentUsername}` : m.opponentUsername}</p>
@@ -205,7 +216,7 @@ function InviteColumn({ title, empty, matches, kind, busy, onAccept, onJoin }: {
 
 function MatchList({ title, matches, user, onAccept, onJoin, busy }: { title: string; matches: OnlineMatch[]; user: SessionUser; onAccept: (id: number, a: "accept" | "decline") => void; onJoin: (id: number) => void; busy: boolean }) {
   return <section className="mt-5"><Kicker>{title}</Kicker><div className="mt-2 grid gap-2">{matches.map((m) => {
-    const home = getTeam(m.hostTeamId), away = getTeam(m.guestTeamId); const incoming = m.role === "guest" && m.status === "invited";
+    const { home, away } = onlineSides(m); const incoming = m.role === "guest" && m.status === "invited";
     return <Panel key={m.id} className="flex flex-wrap items-center gap-3 p-3">
       <Crest team={home} size={30} /><b>{home.name}</b><span className="text-slate-500">v</span><b>{away.name}</b><Crest team={away} size={30} />
       <span className="ml-auto text-slate-400">{m.role === "host" ? `Invited ${m.opponentUsername}` : `From ${m.opponentUsername}`} · {m.status.toUpperCase()}</span>
@@ -239,7 +250,7 @@ export function OnlineMatchRoom({ id, bindings, go }: { id: number; bindings: Bi
   if (error) return <div className="p-8"><p className="border-2 border-red-500/60 bg-red-950/60 p-4 text-red-200">{error}</p><Btn className="mt-4" onClick={() => go({ name: "online" })}>Back</Btn></div>;
   if (!match) return <p className="p-8 font-pixel blink text-[10px] text-slate-300">CONNECTING TO LOBBY...</p>;
   if (match.status === "live") return <OnlineLiveMatch match={match} bindings={bindings} go={go} />;
-  const home = getTeam(match.hostTeamId), away = getTeam(match.guestTeamId), stadium = getStadium(match.stadiumId);
+  const { home, away } = onlineSides(match); const stadium = getStadium(match.stadiumId);
   return <div className="flex h-full items-center justify-center"><Panel className="w-[680px] max-w-[95vw] p-7 text-center">
     <Kicker color="#22c55e">Online Friendly #{match.id}</Kicker><h1 className="font-pixel mt-2 text-lg uppercase">Match Lobby</h1>
     <div className="mt-6 flex items-center justify-center gap-6"><div className="flex flex-col items-center gap-2"><Crest team={home} size={56}/><b>{home.name}</b><span className="text-slate-400">{match.role === "host" ? "YOU" : match.opponentUsername}</span></div><span className="font-pixel text-xl text-yellow-300">VS</span><div className="flex flex-col items-center gap-2"><Crest team={away} size={56}/><b>{away.name}</b><span className="text-slate-400">{match.role === "guest" ? "YOU" : match.opponentUsername}</span></div></div>
@@ -268,8 +279,8 @@ function OnlineHost({ match, bindings, go }: { match: OnlineMatch; bindings: Bin
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const home = getTeam(match.hostTeamId), away = getTeam(match.guestTeamId), kits = pickKits(home, away), stadium = getStadium(match.stadiumId);
-    const config: MatchConfig = { home, away, userTeam: 0, remoteTeam: 1, halfSeconds: match.halfSeconds, difficulty: "normal", homeColor: kits.home, awayColor: kits.away, competition: "ONLINE FRIENDLY", stadiumId: stadium.id };
+    const { home, away, homeOverrides, awayOverrides } = onlineSides(match); const kits = pickKits(home, away), stadium = getStadium(match.stadiumId);
+    const config: MatchConfig = { home, away, userTeam: 0, remoteTeam: 1, halfSeconds: match.halfSeconds, difficulty: "normal", homeColor: kits.home, awayColor: kits.away, competition: "ONLINE FRIENDLY", stadiumId: stadium.id, homePlayerOverrides: homeOverrides, awayPlayerOverrides: awayOverrides };
     let disposed = false;
     const poll = async () => {
       try {
@@ -308,8 +319,7 @@ function OnlineHost({ match, bindings, go }: { match: OnlineMatch; bindings: Bin
     const heartbeat = window.setInterval(() => void poll(), 600);
     return () => { disposed = true; window.clearInterval(heartbeat); rt.stop(); };
   }, [match.id, match.hostTeamId, match.guestTeamId, match.stadiumId, match.halfSeconds, bindings]);
-  const home = getTeam(match.hostTeamId);
-  const away = getTeam(match.guestTeamId);
+  const { home, away } = onlineSides(match);
   const kits = pickKits(home, away);
   return <>
     <OnlineCanvas canvasRef={canvasRef} note={note} role="HOST · You control home team" onExit={() => { runtimeRef.current?.stop(); go({ name: "online" }); }} />
@@ -335,8 +345,8 @@ function OnlineGuest({ match, bindings, go }: { match: OnlineMatch; bindings: Bi
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const home = getTeam(match.hostTeamId), away = getTeam(match.guestTeamId), kits = pickKits(home, away), stadium = getStadium(match.stadiumId);
-    const engine = new RugbyEngine({ home, away, userTeam: 1, remoteTeam: 0, halfSeconds: match.halfSeconds, difficulty: "normal", homeColor: kits.home, awayColor: kits.away, competition: "ONLINE FRIENDLY", stadiumId: stadium.id });
+    const { home, away, homeOverrides, awayOverrides } = onlineSides(match); const kits = pickKits(home, away), stadium = getStadium(match.stadiumId);
+    const engine = new RugbyEngine({ home, away, userTeam: 1, remoteTeam: 0, halfSeconds: match.halfSeconds, difficulty: "normal", homeColor: kits.home, awayColor: kits.away, competition: "ONLINE FRIENDLY", stadiumId: stadium.id, homePlayerOverrides: homeOverrides, awayPlayerOverrides: awayOverrides });
     const renderer = new Renderer(canvas, stadium, engine, bindings);
     engineRef.current = engine; rendererRef.current = renderer;
     let paused = false, disposed = false, raf = 0, seq = 0, lastSend = 0, lastState = 0;
@@ -371,8 +381,7 @@ function OnlineGuest({ match, bindings, go }: { match: OnlineMatch; bindings: Bi
     void loadPixelFonts().then(() => { if (!disposed) raf = requestAnimationFrame(loop); });
     return () => { disposed = true; cancelAnimationFrame(raf); input.detach(); };
   }, [match.id, match.hostTeamId, match.guestTeamId, match.stadiumId, match.halfSeconds, bindings]);
-  const home = getTeam(match.hostTeamId);
-  const away = getTeam(match.guestTeamId);
+  const { home, away } = onlineSides(match);
   const kits = pickKits(home, away);
   return <>
     <OnlineCanvas canvasRef={canvasRef} note={note} role="GUEST · You control away team" onExit={() => { inputRef.current?.detach(); go({ name: "online" }); }} />

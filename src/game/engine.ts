@@ -286,9 +286,11 @@ export class RugbyEngine {
       // Determine starters vs bench lists (indexes in roster)
       const lineup = t === 0 ? (cfg.homeLineup ?? Array.from({length: 15}, (_, i) => i)) : (cfg.awayLineup ?? Array.from({length: 15}, (_, i) => i));
       const bench = t === 0 ? (cfg.homeBench ?? Array.from({length: 8}, (_, i) => 15 + i)) : (cfg.awayBench ?? Array.from({length: 8}, (_, i) => 15 + i));
+      const overrides = t === 0 ? cfg.homePlayerOverrides : cfg.awayPlayerOverrides;
 
       for (let i = 0; i < totalPlayersCount; i++) {
-        const name = data.players[i] ?? `Player ${i + 1}`;
+        const cardOverride = overrides?.[i];
+        const name = cardOverride?.name ?? data.players[i] ?? `Player ${i + 1}`;
         const isStarter = lineup.includes(i);
         const isBenched = bench.includes(i);
         
@@ -299,7 +301,8 @@ export class RugbyEngine {
          const jerseyNumber = isStarter ? (lineup.indexOf(i) + 1) : (16 + bench.indexOf(i));
         
         let finalName = name;
-        let attrs = buildAttributes(jerseyNumber, name, data.rating);
+        let attrs = cardOverride ? { ...cardOverride.attrs } : buildAttributes(jerseyNumber, name, data.rating);
+        const naturalRole = cardOverride?.roleNumber ?? jerseyNumber;
         
         // Overwrite if player lock / Be A Pro custom player
         const isLockedTeam = t === this.userTeam;
@@ -325,7 +328,7 @@ export class RugbyEngine {
           down: 0,
           busy: 0,
           tackleCooldown: 0,
-          isForward: jerseyNumber <= 8,
+          isForward: naturalRole <= 8,
           aiTimer: this.rng() * 0.2,
           anim: "none",
           animUntil: 0,

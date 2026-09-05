@@ -67,12 +67,21 @@ export interface Stadium {
 }
 
 export interface Attributes {
-  speed: number; // max run speed in m/s
+  /** Permanent movement pace in metres per second. */
+  speed: number;
   strength: number;
   tackling: number;
   handling: number;
   kicking: number;
   evasion: number;
+}
+
+/** Per-player values injected into a match from an Ultimate Team card squad. */
+export interface MatchPlayerOverride {
+  name: string;
+  /** Rugby shirt role 1–15; bench players retain their natural role after coming on. */
+  roleNumber: number;
+  attrs: Attributes;
 }
 
 export interface PlayerState {
@@ -185,6 +194,9 @@ export interface MatchConfig {
   awayBench?: number[];
   /** Speeds up the engine simulation for watch mode (e.g. 1 or 2) */
   spectatorSpeed?: number;
+  /** Ultimate Team card attributes for the matchday 23, in lineup/bench order. */
+  homePlayerOverrides?: MatchPlayerOverride[];
+  awayPlayerOverrides?: MatchPlayerOverride[];
   // --- New Player Career options ---
   playerLockPosition?: number;
   playerLockName?: string;
