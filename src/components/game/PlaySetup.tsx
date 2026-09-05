@@ -8,6 +8,7 @@ import type { SessionUser } from "@/lib/auth";
 import { nextUserFixture, type TournamentState } from "@/lib/tournament";
 import type { Screen } from "./GameShell";
 import MatchView from "./MatchView";
+import MatchReport from "./MatchReport";
 import { Btn, Crest, Kbd, Kicker, Panel, PlayerSprite, StadiumThumb, Scroll, ScreenHeader, isLight } from "./ui";
 
 type Step = "team" | "opponent" | "stadium" | "settings" | "match" | "result";
@@ -127,7 +128,7 @@ export default function PlaySetup({ user, bindings, tournamentId, go, setInMatch
         />
         {step === "result" && result && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/70">
-            <Panel className="w-[600px] max-w-[95vw] p-7 slide-in">
+            <Panel className="max-h-[92vh] w-[1000px] max-w-[95vw] overflow-y-auto p-7 slide-in scroll">
               <Kicker>Full time · {competitionName}</Kicker>
               <div className="mt-4 flex items-center justify-between gap-4">
                 <TeamBadge team={home} color={kits.home} />
@@ -150,6 +151,9 @@ export default function PlaySetup({ user, bindings, tournamentId, go, setInMatch
                   </li>
                 ))}
               </ul>
+              <div className="mt-5">
+                <MatchReport result={result} home={home} away={away} homeColor={kits.home} awayColor={kits.away} />
+              </div>
               {saveMsg && <p className="mt-3 text-slate-400">{saveMsg}</p>}
               <div className="mt-5 flex flex-wrap gap-3">
                 {tournament ? (

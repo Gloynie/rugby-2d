@@ -11,6 +11,11 @@ import { Btn, Crest, Kicker, Panel, PlayerSprite, ScreenHeader } from "./ui";
 import MatchView from "./MatchView";
 import type { RugbyEngine } from "@/game/engine";
 
+const emptyReportStats = (): MatchResult["stats"] => [
+  { tries: 0, penalties: 0, dropGoals: 0, conversions: 0, scrumsWon: 0, lineoutsWon: 0, tackles: 0, lineBreaks: 0, metresMade: 0, possessionSeconds: 0, territorySeconds: 0, passes: 0 },
+  { tries: 0, penalties: 0, dropGoals: 0, conversions: 0, scrumsWon: 0, lineoutsWon: 0, tackles: 0, lineBreaks: 0, metresMade: 0, possessionSeconds: 0, territorySeconds: 0, passes: 0 },
+];
+
 interface Props {
   careerId: number;
   fixtureId: string;
@@ -90,7 +95,7 @@ export default function CareerMatch({ careerId, fixtureId, mode, bindings, go }:
       setProPasses(passes);
       setProRating(d.matchRating ?? 6.0);
       setProXp(d.xpEarned ?? 40);
-      setResult({ homeScore: hScore, awayScore: aScore, homeTries: 0, awayTries: 0, events: [] });
+      setResult({ homeScore: hScore, awayScore: aScore, homeTries: 0, awayTries: 0, events: [], stats: emptyReportStats(), playerRatings: [] });
       setPlayerState(d.state);
       setStage("result");
     } else {
@@ -102,7 +107,7 @@ export default function CareerMatch({ careerId, fixtureId, mode, bindings, go }:
       });
       const d = await res.json();
       setSimBusy(false);
-      setResult({ homeScore: d.state.lastResult?.homeScore ?? 0, awayScore: d.state.lastResult?.awayScore ?? 0, homeTries: 0, awayTries: 0, events: d.state.lastResult?.events ?? [] });
+      setResult({ homeScore: d.state.lastResult?.homeScore ?? 0, awayScore: d.state.lastResult?.awayScore ?? 0, homeTries: 0, awayTries: 0, events: d.state.lastResult?.events ?? [], stats: emptyReportStats(), playerRatings: [] });
       setManagerState(d.state);
       setStage("result");
     }

@@ -10,6 +10,7 @@ import { LIVE_FRAME, Renderer, VIEW_H, VIEW_W } from "@/game/render";
 import type { InputFrame, MatchConfig, MatchResult } from "@/game/types";
 import type { SessionUser } from "@/lib/auth";
 import type { Screen } from "./GameShell";
+import MatchReport from "./MatchReport";
 import { Btn, Crest, Kicker, Panel, ScreenHeader, Scroll } from "./ui";
 
 type OnlineStatus = "invited" | "ready" | "live" | "finished" | "declined" | "cancelled";
@@ -262,6 +263,7 @@ function OnlineHost({ match, bindings, go }: { match: OnlineMatch; bindings: Bin
   const lastPoll = useRef(0);
   const postedFinish = useRef(false);
   const [note, setNote] = useState("HOSTING · opponent connecting...");
+  const [result, setResult] = useState<MatchResult | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -294,7 +296,11 @@ function OnlineHost({ match, bindings, go }: { match: OnlineMatch; bindings: Bin
       canvas, config, stadium, bindings, competition: "ONLINE FRIENDLY",
       remoteInput: () => { const out = { ...remoteHeld.current, ...remoteEdge.current }; remoteEdge.current = { ...EMPTY }; return out; },
       onStep: (engine) => { postSnapshot(engine); const now = performance.now(); if (now - lastPoll.current > 90) { lastPoll.current = now; void poll(); } },
-      onFinish: (result) => { if (!postedFinish.current) { postedFinish.current = true; postSnapshot(rt.engine, true); } setNote(`FULL TIME · ${result.homeScore}-${result.awayScore}`); },
+      onFinish: (result) => {
+        if (!postedFinish.current) { postedFinish.current = true; postSnapshot(rt.engine, true); }
+        setResult(result);
+        setNote(`FULL TIME · ${result.homeScore}-${result.awayScore}`);
+      },
       onPauseToggle: () => {},
     });
     runtimeRef.current = rt;
@@ -302,7 +308,20 @@ function OnlineHost({ match, bindings, go }: { match: OnlineMatch; bindings: Bin
     const heartbeat = window.setInterval(() => void poll(), 600);
     return () => { disposed = true; window.clearInterval(heartbeat); rt.stop(); };
   }, [match.id, match.hostTeamId, match.guestTeamId, match.stadiumId, match.halfSeconds, bindings]);
-  return <OnlineCanvas canvasRef={canvasRef} note={note} role="HOST · You control home team" onExit={() => { runtimeRef.current?.stop(); go({ name: "online" }); }} />;
+  const home = getTeam(match.hostTeamId);
+  const away = getTeam(match.guestTeamId);
+  const kits = pickKits(home, away);
+  return <>
+    <OnlineCanvas canvasRef={canvasRef} note={note} role="HOST · You control home team" onExit={() => { runtimeRef.current?.stop(); go({ name: "online" }); }} />
+    {result && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
+      <Panel className="max-h-[92vh] w-[1000px] max-w-full overflow-y-auto p-6 scroll">
+        <Kicker>Online friendly · Full time</Kicker>
+        <h2 className="font-pixel mt-2 text-lg text-yellow-300">{home.short} {result.homeScore} - {result.awayScore} {away.short}</h2>
+        <div className="mt-5"><MatchReport result={result} home={home} away={away} homeColor={kits.home} awayColor={kits.away} /></div>
+        <Btn primary className="mt-5" onClick={() => { runtimeRef.current?.stop(); go({ name: "online" }); }}>Return to online lobby</Btn>
+      </Panel>
+    </div>}
+  </>;
 }
 
 function OnlineGuest({ match, bindings, go }: { match: OnlineMatch; bindings: Bindings; go: (s: Screen) => void }) {
@@ -311,6 +330,7 @@ function OnlineGuest({ match, bindings, go }: { match: OnlineMatch; bindings: Bi
   const rendererRef = useRef<Renderer | null>(null);
   const inputRef = useRef<InputManager | null>(null);
   const [note, setNote] = useState("CONNECTING · waiting for host broadcast...");
+  const [result, setResult] = useState<MatchResult | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -333,6 +353,7 @@ function OnlineGuest({ match, bindings, go }: { match: OnlineMatch; bindings: Bi
           engine.importNetworkState(snap);
           // On the guest client highlight their remote-controlled player as the local one.
           engine.controlled = snap.remoteControlled;
+          if (d.status === "finished" && snap.matchResult) setResult(snap.matchResult);
           setNote(d.status === "finished" ? "FULL TIME" : "CONNECTED · You control away team");
         }
       } catch { setNote("RECONNECTING..."); }
@@ -350,7 +371,20 @@ function OnlineGuest({ match, bindings, go }: { match: OnlineMatch; bindings: Bi
     void loadPixelFonts().then(() => { if (!disposed) raf = requestAnimationFrame(loop); });
     return () => { disposed = true; cancelAnimationFrame(raf); input.detach(); };
   }, [match.id, match.hostTeamId, match.guestTeamId, match.stadiumId, match.halfSeconds, bindings]);
-  return <OnlineCanvas canvasRef={canvasRef} note={note} role="GUEST · You control away team" onExit={() => { inputRef.current?.detach(); go({ name: "online" }); }} />;
+  const home = getTeam(match.hostTeamId);
+  const away = getTeam(match.guestTeamId);
+  const kits = pickKits(home, away);
+  return <>
+    <OnlineCanvas canvasRef={canvasRef} note={note} role="GUEST · You control away team" onExit={() => { inputRef.current?.detach(); go({ name: "online" }); }} />
+    {result && <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
+      <Panel className="max-h-[92vh] w-[1000px] max-w-full overflow-y-auto p-6 scroll">
+        <Kicker>Online friendly · Full time</Kicker>
+        <h2 className="font-pixel mt-2 text-lg text-yellow-300">{home.short} {result.homeScore} - {result.awayScore} {away.short}</h2>
+        <div className="mt-5"><MatchReport result={result} home={home} away={away} homeColor={kits.home} awayColor={kits.away} /></div>
+        <Btn primary className="mt-5" onClick={() => { inputRef.current?.detach(); go({ name: "online" }); }}>Return to online lobby</Btn>
+      </Panel>
+    </div>}
+  </>;
 }
 
 function OnlineCanvas({ canvasRef, note, role, onExit }: { canvasRef: RefObject<HTMLCanvasElement | null>; note: string; role: string; onExit: () => void }) {

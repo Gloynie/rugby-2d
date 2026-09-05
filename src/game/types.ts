@@ -30,6 +30,8 @@ export interface Competition {
   description: string;
 }
 
+export type StadiumArchitecture = "classic" | "oval-bowl" | "modern-bowl" | "asymmetric-arch" | "enclosed-roof" | "roofed-bowl" | "open-end";
+
 export interface Stadium {
   id: string;
   name: string;
@@ -41,6 +43,8 @@ export interface Stadium {
   stand: string;
   accent: string;
   night: boolean;
+  /** Pixel venue silhouette inspired by the real stadium's stand and roof shape. */
+  architecture?: StadiumArchitecture;
 }
 
 export interface Attributes {
@@ -79,7 +83,7 @@ export interface PlayerState {
   rating: number;          // overall player rating
 }
 
-export type AnimKind = "none" | "pass" | "kick" | "dive" | "tackle" | "celebrate" | "injured" | "sidestep" | "bounce" | "lie";
+export type AnimKind = "none" | "pass" | "kick" | "dive" | "tackle" | "celebrate" | "sidestep" | "bounce" | "lie";
 
 export type KickKind = "punt" | "grubber" | "kickoff" | "dropout" | "dropgoal" | "conversion" | "penalty";
 
@@ -178,14 +182,33 @@ export interface RefereeState {
   animFrame: number;
 }
 
-export interface TMOState {
-  active: boolean;
-  timer: number;
-  checkType: "try" | "forwardPass" | "highTackle";
-  homeScoreBefore: number;
-  awayScoreBefore: number;
-  decision: "confirmed" | "overridden";
-  reason: string;
+
+export interface TeamMatchStats {
+  tries: number;
+  penalties: number;
+  dropGoals: number;
+  conversions: number;
+  scrumsWon: number;
+  lineoutsWon: number;
+  tackles: number;
+  lineBreaks: number;
+  metresMade: number;
+  possessionSeconds: number;
+  territorySeconds: number;
+  passes: number;
+}
+
+export interface PlayerMatchRating {
+  id: number;
+  team: TeamIndex;
+  number: number;
+  name: string;
+  rating: number;
+  tries: number;
+  tackles: number;
+  lineBreaks: number;
+  metresMade: number;
+  passes: number;
 }
 
 export interface MatchResult {
@@ -194,4 +217,6 @@ export interface MatchResult {
   homeTries: number;
   awayTries: number;
   events: MatchEvent[];
+  stats: [TeamMatchStats, TeamMatchStats];
+  playerRatings: PlayerMatchRating[];
 }

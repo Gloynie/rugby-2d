@@ -7,13 +7,14 @@ import type {
   MatchConfig,
   MatchEvent,
   MatchResult,
+  PlayerMatchRating,
   Phase,
   PlayerState,
+  TeamMatchStats,
   TeamData,
   TeamIndex,
   Vec2,
   RefereeState,
-  TMOState,
 } from "./types";
 
 export const L = 120;
@@ -23,6 +24,14 @@ const DEG = Math.PI / 180;
 const CATCH_R = 1.15;
 const TACKLE_R = 1.35;
 const GOAL_ELEV = 33 * DEG;
+
+export function emptyTeamMatchStats(): TeamMatchStats {
+  return {
+    tries: 0, penalties: 0, dropGoals: 0, conversions: 0,
+    scrumsWon: 0, lineoutsWon: 0, tackles: 0, lineBreaks: 0,
+    metresMade: 0, possessionSeconds: 0, territorySeconds: 0, passes: 0,
+  };
+}
 
 const clamp = (v: number, a: number, b: number) => (v < a ? a : v > b ? b : v);
 const hyp = (x: number, y: number) => Math.sqrt(x * x + y * y);
@@ -181,7 +190,7 @@ export interface NetworkMatchState {
   lastTackle: unknown;
   referee: RefereeState;
   touchJudges: [RefereeState, RefereeState];
-  tmo: TMOState;
+  matchResult: MatchResult;
 }
 
 export class RugbyEngine {
@@ -207,6 +216,10 @@ export class RugbyEngine {
   /** Live play-by-play commentary (shown in overlay) */
   liveCommentary: { text: string; team: TeamIndex | null; t: number }[] = [];
   events: MatchEvent[] = [];
+  teamStats: [TeamMatchStats, TeamMatchStats] = [emptyTeamMatchStats(), emptyTeamMatchStats()];
+  private playerStatMap = new Map<number, Omit<PlayerMatchRating, "rating">>();
+  /** prevents counting the same carrier crossing a defensive line repeatedly */
+  private lineBreakPlayers = new Set<number>();
   time = 0;
   dt = 1 / 60;
   difficulty: Difficulty;
@@ -232,7 +245,6 @@ export class RugbyEngine {
   // --- New features ---
   referee: RefereeState;
   touchJudges: [RefereeState, RefereeState];
-  tmo: TMOState;
   spectatorSpeed = 1;
   playerLockPosition: number | null = null; // Position to lock control (Be a Pro mode)
   userTries = 0;
@@ -250,17 +262,6 @@ export class RugbyEngine {
       { data: cfg.home, dir: 1, color: cfg.homeColor ?? cfg.home.primary, lineF: 60 },
       { data: cfg.away, dir: -1, color: cfg.awayColor ?? cfg.away.secondary, lineF: 60 },
     ];
-
-    // Initialize TMO state
-    this.tmo = {
-      active: false,
-      timer: 0,
-      checkType: "try",
-      homeScoreBefore: 0,
-      awayScoreBefore: 0,
-      decision: "confirmed",
-      reason: "",
-    };
 
     // Initialize Referee
     this.referee = {
@@ -335,6 +336,12 @@ export class RugbyEngine {
           rating: playerRating,
         });
       }
+    }
+    for (const p of this.players) {
+      this.playerStatMap.set(p.id, {
+        id: p.id, team: p.team, number: p.number, name: p.name,
+        tries: 0, tackles: 0, lineBreaks: 0, metresMade: 0, passes: 0,
+      });
     }
     this.ball = {
       pos: { x: 60, y: 35, z: 0 },
@@ -419,13 +426,38 @@ export class RugbyEngine {
     const s = Math.floor(total % 60);
     return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
   }
+
+  private playerStat(id: number): Omit<PlayerMatchRating, "rating"> {
+    const known = this.playerStatMap.get(id);
+    if (known) return known;
+    const p = this.players[id];
+    const fallback = { id, team: p?.team ?? 0, number: p?.number ?? 0, name: p?.name ?? "Player", tries: 0, tackles: 0, lineBreaks: 0, metresMade: 0, passes: 0 } as Omit<PlayerMatchRating, "rating">;
+    this.playerStatMap.set(id, fallback);
+    return fallback;
+  }
+
+  private calculatedPlayerRatings(): PlayerMatchRating[] {
+    return this.players
+      .filter((p) => p.isOnField || p.hasBeenSubbedOff)
+      .map((p) => {
+        const stat = this.playerStat(p.id);
+        const base = 5.7 + stat.tries * 1.45 + stat.tackles * 0.13 + stat.lineBreaks * 0.7 + stat.metresMade * 0.012 + stat.passes * 0.035;
+        const fatiguePenalty = Math.max(0, p.fatigue - 24) * 0.012;
+        const rating = Math.round(Math.max(4, Math.min(10, base - fatiguePenalty)) * 10) / 10;
+        return { ...stat, metresMade: Math.round(stat.metresMade), rating };
+      })
+      .sort((a, b) => a.team - b.team || a.number - b.number);
+  }
+
   result(): MatchResult {
     return {
       homeScore: this.score[0],
       awayScore: this.score[1],
       homeTries: this.tries[0],
       awayTries: this.tries[1],
-      events: this.events,
+      events: [...this.events],
+      stats: [{ ...this.teamStats[0], metresMade: Math.round(this.teamStats[0].metresMade) }, { ...this.teamStats[1], metresMade: Math.round(this.teamStats[1].metresMade) }],
+      playerRatings: this.calculatedPlayerRatings(),
     };
   }
 
@@ -463,7 +495,7 @@ export class RugbyEngine {
       lastTackle: copy(this.lastTackle),
       referee: copy(this.referee),
       touchJudges: copy(this.touchJudges),
-      tmo: copy(this.tmo),
+      matchResult: this.result(),
     };
   }
 
@@ -503,7 +535,6 @@ export class RugbyEngine {
     this.lastTackle = state.lastTackle as { tackler: number; carrier: number } | null;
     this.referee = state.referee;
     this.touchJudges = state.touchJudges;
-    this.tmo = state.tmo;
   }
 
   say(text: string, sub = "", color = "#ffffff", duration = 2.6): void {
@@ -624,54 +655,6 @@ export class RugbyEngine {
     });
   }
 
-  /** Trigger TMO (Television Match Official) Review screen */
-  triggerTMO(type: "try" | "forwardPass" | "highTackle", onConfirm: () => void, onOverride: () => void): void {
-    const isOverride = this.rng() < 0.28; // 28% chance of TMO override for dramatic effect!
-    const reasons = {
-      try: [
-        "Checking grounding... Ball grounded cleanly! Try stands.",
-        "Checking touchline... Foot was in touch! Try disallowed, lineout given.",
-      ],
-      forwardPass: [
-        "Checking pass trajectory... Clear backwards release. Play on!",
-        "Checking pass trajectory... Forward pass detected. Scrum awarded.",
-      ],
-      highTackle: [
-        "Checking tackle height... Shoulder to chest, clean tackle.",
-        "Checking tackle height... Direct contact to head! Red Card issued.",
-      ],
-    };
-
-    const textList = reasons[type];
-    const reasonText = isOverride ? textList[1] : textList[0];
-    
-    this.tmo = {
-      active: true,
-      timer: 3.5, // 3.5 seconds of dramatic pixel static replay overlay
-      checkType: type,
-      homeScoreBefore: this.score[0],
-      awayScoreBefore: this.score[1],
-      decision: isOverride ? "overridden" : "confirmed",
-      reason: reasonText,
-    };
-
-    this.say("TMO REVIEW", "Checking the big screen...", "#fbbf24", 3.5);
-    this.pushComment(`TMO Review: checking potential ${type === "try" ? "Try" : type === "forwardPass" ? "Forward Pass" : "High Tackle"}...`, null);
-
-    // After 3.5s delay, execute onConfirm or onOverride
-    setTimeout(() => {
-      if (!this.tmo.active) return;
-      this.tmo.active = false;
-      this.say("TMO DECISION", isOverride ? "OVERRULED!" : "DECISION STANDS", isOverride ? "#ef4444" : "#22c55e", 2.2);
-      this.pushComment(`TMO Decision: ${reasonText}`, null);
-      if (isOverride) onOverride();
-      else onConfirm();
-    }, 3500);
-  }
-
-  private updateTMO(dt: number): void {
-    this.tmo.timer -= dt;
-  }
   private resetPlayers(): void {
     for (const p of this.players) {
       if (!p.isOnField) continue;
@@ -707,12 +690,6 @@ export class RugbyEngine {
     this.dt = dt;
     this.time += dt;
     
-    // Update TMO state if active
-    if (this.tmo.active) {
-      this.updateTMO(dt);
-      return;
-    }
-
     // Update match officials (referee + touch judges)
     this.updateOfficials(dt);
     if (this.message.timer > 0) this.message.timer -= dt;
@@ -992,6 +969,7 @@ export class RugbyEngine {
       if (this.phase !== "play") return;
     }
     this.moveAll(dt, input, remoteInput);
+    this.recordOpenPlayStats(dt);
     this.separate();
     this.updateBall(dt);
     if (this.phase !== "play") return;
@@ -1002,6 +980,26 @@ export class RugbyEngine {
     this.checkTackles();
     if (this.phase !== "play") return;
     this.checkBoundaries(dt);
+  }
+
+  private recordOpenPlayStats(dt: number): void {
+    const carrier = this.carrier();
+    if (!carrier || !carrier.isOnField) return;
+    const team = carrier.team;
+    const teamStats = this.teamStats[team];
+    teamStats.possessionSeconds += dt;
+    if (this.fx(team, carrier.pos.x) > 60) teamStats.territorySeconds += dt;
+    const metres = hyp(carrier.vel.x, carrier.vel.y) * dt;
+    teamStats.metresMade += metres;
+    this.playerStat(carrier.id).metresMade += metres;
+
+    // A carrier is credited with one line break after penetrating two metres beyond the defence line.
+    const defenceLine = this.teams[other(team)].lineF;
+    if (this.fx(team, carrier.pos.x) > defenceLine + 2 && !this.lineBreakPlayers.has(carrier.id)) {
+      this.lineBreakPlayers.add(carrier.id);
+      teamStats.lineBreaks++;
+      this.playerStat(carrier.id).lineBreaks++;
+    }
   }
 
   private updateControl(input: InputFrame, remoteInput: InputFrame | null): void {
@@ -1097,7 +1095,7 @@ export class RugbyEngine {
       if (this.phase === "ruck") continue;
       if (carrier && carrier.team === t) continue;
       const sorted = this.players
-        .filter((p) => p.team === t && p.down <= 0 && p.busy <= 0 && p.id !== this.controlled && p.id !== this.remoteControlled)
+        .filter((p) => p.isOnField && p.team === t && p.down <= 0 && p.busy <= 0 && p.id !== this.controlled && p.id !== this.remoteControlled)
         .sort((a, c) => dist(a.pos, focus) - dist(c.pos, focus));
       for (let i = 0; i < Math.min(2, sorted.length); i++) chasers[t].add(sorted[i].id);
     }
@@ -1114,7 +1112,7 @@ export class RugbyEngine {
     // slots
     const slots: [Map<number, number>, Map<number, number>] = [new Map(), new Map()];
     const liners = this.players
-      .filter((p) => p.team === def && p.number !== 15 && !chasers[def].has(p.id) && p.down <= 0)
+      .filter((p) => p.isOnField && p.team === def && p.number !== 15 && !chasers[def].has(p.id) && p.down <= 0)
       .sort((a, c) => a.pos.y - c.pos.y);
     const n = liners.length;
     if (n > 0) {
@@ -1384,10 +1382,12 @@ export class RugbyEngine {
       return;
     }
 
-    // Track player career passes
+    // Track player career and match-report passes
     if (this.playerLockPosition !== null && this.userTeam === p.team && p.number === this.playerLockPosition) {
       this.userPasses++;
     }
+    this.teamStats[p.team].passes++;
+    this.playerStat(p.id).passes++;
 
     p.anim = "pass";
     p.animUntil = this.time + 0.35;
@@ -1609,6 +1609,9 @@ export class RugbyEngine {
   private registerGoal(team: TeamIndex, kind: KickKind): void {
     const points = kind === "conversion" ? 2 : 3;
     this.score[team] += points;
+    if (kind === "conversion") this.teamStats[team].conversions++;
+    else if (kind === "penalty") this.teamStats[team].penalties++;
+    else if (kind === "dropgoal") this.teamStats[team].dropGoals++;
     const kicker = this.ball.lastPlayer !== null ? this.players[this.ball.lastPlayer].name : "";
     const type = kind === "conversion" ? "conversion" : kind === "penalty" ? "penalty" : "dropgoal";
     this.events.push({ minute: this.gameMinute(), team, type, player: kicker, points });
@@ -1726,47 +1729,16 @@ export class RugbyEngine {
 
   private scoreTry(p: PlayerState): void {
     const t = p.team;
-    
-    // --- New feature: 18% chance of TMO Review on tries ---
-    if (this.rng() < 0.18) {
-      this.triggerTMO(
-        "try",
-        () => {
-          // Confirm TMO: award try normally
-          if (this.playerLockPosition !== null && this.userTeam === t && p.number === this.playerLockPosition) {
-            this.userTries++;
-          }
-          this.score[t] += 5;
-          this.tries[t]++;
-          this.events.push({ minute: this.gameMinute(), team: t, type: "try", player: p.name, points: 5 });
-          this.say("TRY CONFIRMED", `${p.name} – ${this.teamName(t)}`, this.teams[t].color, 2.6);
-          this.phase = "try";
-          this.phaseTimer = 2.4;
-          this.tryInfo = { team: t, y: clamp(p.pos.y, 3, W - 3) };
-          this.tryScorer = p.id;
-          p.anim = "celebrate";
-          p.animUntil = this.time + 8;
-          this.ball.carrier = p.id;
-          this.charging = false;
-          this.kickCharge = 0;
-          this.ruck = null;
-        },
-        () => {
-          // Override TMO: Disallow try, restart with Goal-line drop-out or 22m drop-out
-          this.say("TRY DISALLOWED", "No grounding / foot in touch", "#ef4444", 3);
-          this.scheduleRestart("dropout", other(t));
-        }
-      );
-      return;
-    }
-
     if (this.playerLockPosition !== null && this.userTeam === t && p.number === this.playerLockPosition) {
       this.userTries++;
     }
     this.score[t] += 5;
     this.tries[t]++;
+    this.teamStats[t].tries++;
+    this.playerStat(p.id).tries++;
     this.events.push({ minute: this.gameMinute(), team: t, type: "try", player: p.name, points: 5 });
     this.say("TRY!", `${p.name} – ${this.teamName(t)}`, this.teams[t].color, 2.6);
+    this.pushComment(`TRY! Brilliant finish from ${p.name}!`, t);
     this.phase = "try";
     this.phaseTimer = 2.4;
     this.tryInfo = { team: t, y: clamp(p.pos.y, 3, W - 3) };
@@ -1858,10 +1830,12 @@ export class RugbyEngine {
       return;
     }
 
-    // Track player career tackles
+    // Track player career and match-report tackles.
     if (this.playerLockPosition !== null && this.userTeam === t.team && t.number === this.playerLockPosition) {
       this.userTackles++;
     }
+    this.teamStats[t.team].tackles++;
+    this.playerStat(t.id).tackles++;
 
     this.lastTackle = { tackler: t.id, carrier: c.id };
     c.down = 3;
@@ -2101,6 +2075,7 @@ export class RugbyEngine {
     }
     const pWin = clamp(0.86 + diff * 0.004, 0.6, 0.96);
     const winner: TeamIndex = this.rng() < pWin ? att : def;
+    this.teamStats[winner].scrumsWon++;
     if (winner !== att) {
       this.say("SCRUM TURNOVER!", `${this.teamName(def)} win it against the head`, "#fbbf24");
       this.pushComment(`Scrum turnover! ${this.teamName(def)} against the head.`, def);
@@ -2153,6 +2128,7 @@ export class RugbyEngine {
     const jump = (t: TeamIndex) => (this.pl(t, 4).attrs.strength + this.pl(t, 5).attrs.strength) / 2;
     const pWin = clamp(0.82 + (jump(att) - jump(def)) * 0.004, 0.55, 0.95);
     const winner: TeamIndex = this.rng() < pWin ? att : def;
+    this.teamStats[winner].lineoutsWon++;
     for (const p of this.players) { if (p.isOnField) p.busy = p.isForward ? 0.6 : 0; }
     if (winner !== att) {
       this.say("LINEOUT STOLEN!", `${this.teamName(def)} win it in the air`, "#fbbf24");

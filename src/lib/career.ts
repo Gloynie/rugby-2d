@@ -215,7 +215,12 @@ export function simulateMatch(home: TeamData, away: TeamData, difficulty: Diffic
 }
 
 /** Apply match result to career state */
-export function applyMatchResult(state: CareerState, fixtureId: string, result: MatchResult, userTeam: 0 | 1): CareerState {
+export function applyMatchResult(
+  state: CareerState,
+  fixtureId: string,
+  result: Pick<MatchResult, "homeScore" | "awayScore" | "homeTries" | "awayTries" | "events">,
+  userTeam: 0 | 1,
+): CareerState {
   const fixture = state.schedule.find((f) => f.id === fixtureId);
   if (!fixture || fixture.played) return state;
   const next = { ...state, schedule: state.schedule.map((f) => f.id === fixtureId ? { ...f, played: true, homeScore: result.homeScore, awayScore: result.awayScore } : f) };

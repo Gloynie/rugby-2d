@@ -372,6 +372,7 @@ export class Renderer {
       b.fillStyle = "rgba(4,8,24,0.32)";
       b.fillRect(0, 0, this.bufW, this.bufH);
     }
+    this.drawVenueArchitecture();
     // stand front wall + walkway
     b.fillStyle = "#0b1020";
     b.fillRect(this.sx(-8), this.sy(-8), this.sw(L + 16), this.sw(W + 16));
@@ -401,6 +402,76 @@ export class Renderer {
     // apron grass
     b.fillStyle = shade(s.grassB, 0.82);
     b.fillRect(x0, y0, x1 - x0, y1 - y0);
+  }
+
+  /** Architecture-aware pixel stand/roof silhouettes based on real venue families. */
+  private drawVenueArchitecture(): void {
+    const b = this.b;
+    const s = this.stadium;
+    const kind = s.architecture ?? "classic";
+    const x0 = this.sx(-8), x1 = this.sx(L + 8), y0 = this.sy(-8), y1 = this.sy(W + 8);
+    const innerX0 = this.sx(-1), innerX1 = this.sx(L + 1), innerY0 = this.sy(-1), innerY1 = this.sy(W + 1);
+    const roof = s.night ? "#0b1020" : "#1e293b";
+    const standShade = shade(s.stand, 0.62);
+    const bright = shade(s.accent, 1.2);
+    const step = Math.max(5, Math.round(this.ppm * 1.5));
+    const band = Math.max(9, Math.round(this.ppm * 2.2));
+    const standBand = (x: number, y: number, w: number, h: number, color: string) => { b.fillStyle = color; b.fillRect(x, y, w, h); };
+    const steppedCorner = (left: boolean, top: boolean, layers = 4) => {
+      for (let i = 0; i < layers; i++) {
+        const w = step * (i + 1);
+        const h = step;
+        const x = left ? innerX0 - w : innerX1;
+        const y = top ? innerY0 - (i + 1) * h : innerY1 + i * h;
+        standBand(x, y, w, h, i % 2 ? standShade : roof);
+      }
+    };
+
+    // Main high grandstands
+    if (kind === "asymmetric-arch") {
+      // Aviva: broad curving north/south seating bowls with a distinctly taller covered main stand.
+      standBand(x0, y0, x1 - x0, band * 1.5, roof);
+      standBand(x0, y1 - band * 0.75, x1 - x0, band * 0.75, standShade);
+      for (let i = 0; i < 7; i++) standBand(innerX0 + i * step * 3, y0 - (i % 3) * step, step * 2, step, bright);
+      standBand(x0, y0 + band, band * 0.8, y1 - y0 - band, standShade);
+      standBand(x1 - band * 0.55, y0 + band, band * 0.55, y1 - y0 - band, standShade);
+    } else if (kind === "enclosed-roof") {
+      // Principality / Forsyth Barr: enclosed roof, broad trusses and all-side seating.
+      standBand(x0, y0, x1 - x0, band, roof);
+      standBand(x0, y1 - band, x1 - x0, band, roof);
+      standBand(x0, y0, band, y1 - y0, roof);
+      standBand(x1 - band, y0, band, y1 - y0, roof);
+      b.fillStyle = bright;
+      for (let x = x0; x < x1; x += step * 4) { b.fillRect(x, y0 + band - 2, step * 2, 2); b.fillRect(x, y1 - band, step * 2, 2); }
+      b.fillStyle = "rgba(148,163,184,0.55)";
+      for (let x = x0 + step; x < x1; x += step * 5) b.fillRect(x, y0 + 2, 1, y1 - y0 - 4);
+    } else if (kind === "oval-bowl" || kind === "modern-bowl" || kind === "roofed-bowl") {
+      // Stade de France / Olimpico / Accor / DHL / Vélodrome: stepped oval bowl around the rectangle.
+      standBand(x0 + band, y0, x1 - x0 - band * 2, band, roof);
+      standBand(x0 + band, y1 - band, x1 - x0 - band * 2, band, roof);
+      standBand(x0, y0 + band, band, y1 - y0 - band * 2, standShade);
+      standBand(x1 - band, y0 + band, band, y1 - y0 - band * 2, standShade);
+      steppedCorner(true, true); steppedCorner(false, true); steppedCorner(true, false); steppedCorner(false, false);
+      if (kind === "roofed-bowl") {
+        b.fillStyle = "rgba(226,232,240,0.58)";
+        for (let x = x0 + band; x < x1 - band; x += step * 3) { b.fillRect(x, y0 + 2, step * 2, 2); b.fillRect(x, y1 - 4, step * 2, 2); }
+      }
+    } else if (kind === "open-end") {
+      // Murrayfield / Sandy Park / Amalfitani: strong side stands and visibly open ends.
+      standBand(x0, y0 + step * 2, band, y1 - y0 - step * 4, roof);
+      standBand(x1 - band, y0 + step * 2, band, y1 - y0 - step * 4, roof);
+      standBand(x0 + band, y0, x1 - x0 - band * 2, band * 0.65, standShade);
+      b.fillStyle = bright;
+      for (let y = y0 + step * 3; y < y1 - step * 3; y += step * 4) { b.fillRect(x0 + band - 2, y, 2, step * 2); b.fillRect(x1 - band, y, 2, step * 2); }
+    } else {
+      // Twickenham / Eden Park / traditional English grounds: four rectangular grandstands with open corners.
+      standBand(x0 + step, y0, x1 - x0 - step * 2, band, roof);
+      standBand(x0 + step, y1 - band, x1 - x0 - step * 2, band, standShade);
+      standBand(x0, y0 + step, band, y1 - y0 - step * 2, standShade);
+      standBand(x1 - band, y0 + step, band, y1 - y0 - step * 2, roof);
+      b.fillStyle = bright;
+      for (let x = x0 + step * 2; x < x1 - step; x += step * 4) { b.fillRect(x, y0 + band - 2, step * 2, 2); b.fillRect(x, y1 - band, step * 2, 2); }
+    }
   }
 
   private drawPitch(): void {
@@ -692,58 +763,12 @@ export class Renderer {
     if (this.showHelp && m.userTeam !== null) this.drawHelp();
     this.drawPhaseUI(m);
 
-    // --- Draw TMO overlay if active ---
-    if (m.tmo.active) {
-      this.drawTMOOverlay(m);
-    }
 
     // --- Draw Spectator Speed indicator if accelerated ---
     if (m.spectatorSpeed > 1) {
       this.panel(this.bufW - 90, 6, 84, 16, { accent: "#facc15" });
       this.text(">> SPECTATE 2X", this.bufW - 48, 10, { align: "center", color: "#facc15", size: 8 });
     }
-  }
-
-  private drawTMOOverlay(m: RugbyEngine): void {
-    const b = this.b;
-    const w = 400;
-    const h = 130;
-    const x = Math.round(this.bufW / 2 - w / 2);
-    const y = Math.round(this.bufH / 2 - h / 2 - 20);
-
-    // Draw static background card
-    this.panel(x, y, w, h, { fill: "rgba(10,15,30,0.95)", border: "#fbbf24", accent: "#fbbf24" });
-    
-    // Draw CRT static-noise scanline lines in review area
-    b.fillStyle = "rgba(255,255,255,0.04)";
-    for (let i = 0; i < h; i += 4) {
-      if (Math.floor(this.now * 25 + i) % 3 === 0) {
-        b.fillRect(x + 10, y + i, w - 20, 2);
-      }
-    }
-
-    this.text("TMO TELEVISION REVIEW", this.bufW / 2, y + 10, { align: "center", color: "#fbbf24", size: 10 });
-    this.text(`Potential: ${m.tmo.checkType.toUpperCase()}`, this.bufW / 2, y + 26, { align: "center", color: "#fff", size: 8 });
-    
-    // Animated progress scanbar
-    const barWidth = 240;
-    const barX = this.bufW / 2 - barWidth / 2;
-    this.bar(barX, y + 42, barWidth, 6, (3.5 - m.tmo.timer) / 3.5, "#fbbf24");
-    
-    // Blinking TMO red alert dot
-    const blink = Math.floor(this.now * 3) % 2 === 0;
-    if (blink) {
-      this.rect(this.bufW / 2 - 130, y + 10, 6, 6, "#ef4444");
-    }
-
-    // Live TMO decision text
-    this.text(m.tmo.reason.toUpperCase(), this.bufW / 2, y + 64, { align: "center", color: "#cbd5e1", size: 8 });
-    
-    // Status message
-    const decisionColor = m.tmo.decision === "confirmed" ? "#22c55e" : "#ef4444";
-    const statusText = m.tmo.timer > 1.2 ? "ANALYSING REPLAY ANGLE..." : `DECISION: ${m.tmo.decision.toUpperCase()}`;
-    this.text(statusText, this.bufW / 2, y + 84, { align: "center", color: m.tmo.timer > 1.2 ? "#94a3b8" : decisionColor, size: 8 });
-    this.text("REFEREE CONSULTING VIDEO OFFICIAL", this.bufW / 2, y + 104, { align: "center", color: "#64748b", size: 8 });
   }
 
   private drawScoreboard(m: RugbyEngine): void {

@@ -11,6 +11,7 @@ interface Tile {
   title: string;
   sub: string;
   screen: Screen;
+  comingSoon?: boolean;
 }
 
 export default function MainMenu({ user, go }: { user: SessionUser | null; go: (s: Screen) => void }) {
@@ -21,12 +22,20 @@ export default function MainMenu({ user, go }: { user: SessionUser | null; go: (
     { id: "controls", title: "Controls", sub: "Rebind every key", screen: { name: "controls" } },
     { id: "profile", title: user ? "My career" : "Sign in", sub: user ? "Record, history & competitions" : "Save results and run tournaments", screen: { name: "profile" } },
     { id: "howto", title: "How to play", sub: "Laws of the game & tips", screen: { name: "howto" } },
-    { id: "career", title: "Manager mode", sub: "Run a club through a full season", screen: { name: "career" } },
-    { id: "player-career", title: "Player Career", sub: "Create a customized pro, earn XP and upgrade your rating", screen: { name: "player-career-start" } },
+    { id: "career", title: "Manager mode", sub: "Run a club through a full season", screen: { name: "career" }, comingSoon: true },
+    { id: "player-career", title: "Player Career", sub: "Create a customized pro, earn XP and upgrade your rating", screen: { name: "player-career-start" }, comingSoon: true },
     { id: "online", title: "Online Friendlies", sub: "Invite a PixelRuggas player by username", screen: { name: "online" } },
   ];
   const [sel, setSel] = useState(0);
+  const [notice, setNotice] = useState<string | null>(null);
   const tilesCount = tiles.length;
+  const openTile = (tile: Tile) => {
+    if (tile.comingSoon) {
+      setNotice(`${tile.title.toUpperCase()} IS COMING SOON.`);
+      return;
+    }
+    go(tile.screen);
+  };
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
@@ -50,7 +59,7 @@ export default function MainMenu({ user, go }: { user: SessionUser | null; go: (
         case "Enter":
         case "NumpadEnter":
           e.preventDefault();
-          go(tiles[sel].screen);
+          openTile(tiles[sel]);
           return;
         default:
           return;
@@ -77,6 +86,7 @@ export default function MainMenu({ user, go }: { user: SessionUser | null; go: (
           <h1 className="font-pixel mt-2 text-[10px] uppercase leading-relaxed text-slate-200 drop-shadow-[2px_2px_0_#000] md:text-xs">
             {user ? `Welcome back, ${user.username}` : "Choose a mode and kick off"}
           </h1>
+          {notice && <p className="font-pixel mt-2 border-2 border-yellow-400/60 bg-black/80 px-3 py-2 text-[8px] uppercase text-yellow-300">{notice}</p>}
         </div>
         <p className="hidden text-right text-slate-300 md:block">
           {TEAMS.length} real teams · {COMPETITIONS.length} competitions · {STADIUMS.length} stadiums
@@ -154,32 +164,32 @@ export default function MainMenu({ user, go }: { user: SessionUser | null; go: (
           </div>
         </button>
 
-        <button className={`${cls(6)} col-span-12 min-h-[118px] md:col-span-6`} onMouseEnter={() => setSel(6)} onClick={() => go(tiles[6].screen)}>
+        <button className={`${cls(6)} col-span-12 min-h-[118px] cursor-not-allowed opacity-75 md:col-span-6`} onMouseEnter={() => setSel(6)} onClick={() => openTile(tiles[6])}>
           <div className="relative flex items-center gap-6 p-5">
             <div className="grid h-16 w-16 place-items-center border-4 border-yellow-300/60 bg-yellow-300/10">
               <span className="font-pixel text-lg">MGR</span>
             </div>
             <div className="flex-1">
-              <Kicker>New</Kicker>
+              <Kicker>Mode</Kicker>
               <h3 className="font-pixel mt-1 text-sm uppercase leading-relaxed">{tiles[6].title}</h3>
               <p className="text-slate-300">{tiles[6].sub}</p>
             </div>
-            <span className="font-pixel text-xs text-yellow-300">→</span>
           </div>
+          <div className="font-pixel absolute inset-0 grid place-items-center bg-black/55 text-xs uppercase tracking-widest text-yellow-300">Coming Soon</div>
         </button>
 
-        <button className={`${cls(7)} col-span-12 min-h-[118px] md:col-span-6`} onMouseEnter={() => setSel(7)} onClick={() => go(tiles[7].screen)}>
+        <button className={`${cls(7)} col-span-12 min-h-[118px] cursor-not-allowed opacity-75 md:col-span-6`} onMouseEnter={() => setSel(7)} onClick={() => openTile(tiles[7])}>
           <div className="relative flex items-center gap-6 p-5">
             <div className="grid h-16 w-16 place-items-center border-4 border-yellow-300/60 bg-yellow-300/10">
               <span className="font-pixel text-lg">PRO</span>
             </div>
             <div className="flex-1">
-              <Kicker>New</Kicker>
+              <Kicker>Mode</Kicker>
               <h3 className="font-pixel mt-1 text-sm uppercase leading-relaxed">{tiles[7].title}</h3>
               <p className="text-slate-300">{tiles[7].sub}</p>
             </div>
-            <span className="font-pixel text-xs text-yellow-300">→</span>
           </div>
+          <div className="font-pixel absolute inset-0 grid place-items-center bg-black/55 text-xs uppercase tracking-widest text-yellow-300">Coming Soon</div>
         </button>
 
         <button className={`${cls(8)} col-span-12 min-h-[104px] border-green-400/60`} onMouseEnter={() => setSel(8)} onClick={() => go(tiles[8].screen)}>

@@ -88,7 +88,7 @@ function Overview({ state, next, onPlay, busy }: { state: CareerState; next?: Ca
   const comp = getCompetition(state.competitionId);
   const myStanding = state.standings.find((s) => s.teamId === state.teamId);
   const pos = state.standings.indexOf(myStanding!) + 1;
-  const available = state.roster.filter((p) => p.injuredWeeks === 0 && p.fitness > 40);
+  const available = state.roster.filter((p) => p.fitness > 40);
   return (
     <div className="grid gap-4 lg:grid-cols-3">
       <Panel className="p-4 lg:col-span-2">
@@ -143,7 +143,7 @@ function Overview({ state, next, onPlay, busy }: { state: CareerState; next?: Ca
       <Panel className="p-4">
         <Kicker>Top form</Kicker>
         <ul className="mt-2 space-y-1">
-          {[...state.roster].filter((p) => p.injuredWeeks === 0).sort((a, b) => b.form - a.form).slice(0, 5).map((p) => (
+          {[...state.roster].sort((a, b) => b.form - a.form).slice(0, 5).map((p) => (
             <li key={p.id} className="flex justify-between text-sm">
               <span>{p.name}</span>
               <span className="text-green-300">{Math.round(p.form)}</span>
@@ -188,7 +188,7 @@ function Roster({ state, onAction, busy }: { state: CareerState; onAction: (id: 
         </thead>
         <tbody className="divide-y divide-white/5">
           {state.roster.map((p) => (
-            <tr key={p.id} className={p.injuredWeeks > 0 ? "opacity-60" : ""}>
+            <tr key={p.id}>
               <td className="py-1 text-slate-400">{p.number}</td>
               <td><PlayerSprite jersey={team.primary} jersey2={team.secondary} number={p.number} name={p.name} scale={2} view={p.number % 2 ? "back" : "front"} /></td>
               <td className="font-bold">{p.name}</td>
@@ -199,15 +199,11 @@ function Roster({ state, onAction, busy }: { state: CareerState; onAction: (id: 
               <td className="text-right tabular-nums text-cyan-300">{Math.round(p.morale)}</td>
               <td className="text-right tabular-nums">{Math.round(p.fitness)}</td>
               <td>
-                {p.injuredWeeks > 0 ? (
-                  <span className="text-red-300">Injured {p.injuredWeeks}w</span>
-                ) : (
-                  <div className="flex gap-1">
-                    <button onClick={() => onAction(p.id, "praise")} disabled={busy !== null} className="font-pixel border border-green-400/40 px-1 py-0.5 text-[7px] text-green-300 hover:bg-green-400/10">Praise</button>
-                    <button onClick={() => onAction(p.id, "criticise")} disabled={busy !== null} className="font-pixel border border-red-400/40 px-1 py-0.5 text-[7px] text-red-300 hover:bg-red-400/10">Criticise</button>
-                    <button onClick={() => onAction(p.id, "rest")} disabled={busy !== null} className="font-pixel border border-cyan-400/40 px-1 py-0.5 text-[7px] text-cyan-300 hover:bg-cyan-400/10">Rest</button>
-                  </div>
-                )}
+                <div className="flex gap-1">
+                  <button onClick={() => onAction(p.id, "praise")} disabled={busy !== null} className="font-pixel border border-green-400/40 px-1 py-0.5 text-[7px] text-green-300 hover:bg-green-400/10">Praise</button>
+                  <button onClick={() => onAction(p.id, "criticise")} disabled={busy !== null} className="font-pixel border border-red-400/40 px-1 py-0.5 text-[7px] text-red-300 hover:bg-red-400/10">Criticise</button>
+                  <button onClick={() => onAction(p.id, "rest")} disabled={busy !== null} className="font-pixel border border-cyan-400/40 px-1 py-0.5 text-[7px] text-cyan-300 hover:bg-cyan-400/10">Rest</button>
+                </div>
               </td>
             </tr>
           ))}

@@ -43,8 +43,6 @@ const TABS: { label: string; screen: Screen }[] = [
   { label: "Compete", screen: { name: "competitions" } },
   { label: "Squads", screen: { name: "squads" } },
   { label: "Controls", screen: { name: "controls" } },
-  { label: "Manager", screen: { name: "career" } },
-  { label: "Pro Career", screen: { name: "player-career-start" } },
   { label: "Online", screen: { name: "online" } },
 ];
 
