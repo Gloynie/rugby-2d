@@ -372,7 +372,6 @@ export class Renderer {
       b.fillStyle = "rgba(4,8,24,0.32)";
       b.fillRect(0, 0, this.bufW, this.bufH);
     }
-    this.drawVenueArchitecture();
     // stand front wall + walkway
     b.fillStyle = "#0b1020";
     b.fillRect(this.sx(-8), this.sy(-8), this.sw(L + 16), this.sw(W + 16));
@@ -402,6 +401,8 @@ export class Renderer {
     // apron grass
     b.fillStyle = shade(s.grassB, 0.82);
     b.fillRect(x0, y0, x1 - x0, y1 - y0);
+    // Draw distinct stand/roof architecture over the base apron. The pitch itself is painted after this.
+    this.drawVenueArchitecture();
   }
 
   /** Architecture-aware pixel stand/roof silhouettes based on real venue families. */
@@ -471,6 +472,22 @@ export class Renderer {
       standBand(x1 - band, y0 + step, band, y1 - y0 - step * 2, roof);
       b.fillStyle = bright;
       for (let x = x0 + step * 2; x < x1 - step; x += step * 4) { b.fillRect(x, y0 + band - 2, step * 2, 2); b.fillRect(x, y1 - band, step * 2, 2); }
+    }
+
+    // Stadium-specific pixel roof fascia, e.g. DHL Stadium's bright yellow DHL-branded oval roof.
+    if (s.roofBrand) {
+      const label = s.roofBrand.toUpperCase();
+      const signW = Math.max(42, this.measure(label, 10) + 16);
+      const signH = 16;
+      const signX = Math.round((x0 + x1 - signW) / 2);
+      const signY = y0 + 3;
+      b.fillStyle = "#ffcc00";
+      b.fillRect(signX - 2, signY - 2, signW + 4, signH + 4);
+      b.fillStyle = "#d40511";
+      b.fillRect(signX, signY, signW, signH);
+      b.fillStyle = "#ffcc00";
+      b.fillRect(signX + 2, signY + 2, signW - 4, signH - 4);
+      this.text(label, signX + signW / 2, signY + 4, { align: "center", size: 9, color: "#d40511", shadow: false });
     }
   }
 

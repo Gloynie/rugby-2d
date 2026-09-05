@@ -45,6 +45,8 @@ export interface Stadium {
   night: boolean;
   /** Pixel venue silhouette inspired by the real stadium's stand and roof shape. */
   architecture?: StadiumArchitecture;
+  /** Optional real-world roof/stand sponsor lettering rendered in pixel form. */
+  roofBrand?: string;
 }
 
 export interface Attributes {

@@ -1199,8 +1199,10 @@ export class RugbyEngine {
         const dx = b.pos.x - a.pos.x;
         const dy = b.pos.y - a.pos.y;
         const d = hyp(dx, dy);
-        if (d < 1.0 && d > 0.0001) {
-          const push = (1.0 - d) / 2;
+        // Team-mates maintain a wider support lane in open play; opposing players still meet in contact.
+        const minGap = this.phase === "play" && a.team === b.team ? 1.85 : 1.0;
+        if (d < minGap && d > 0.0001) {
+          const push = (minGap - d) / 2;
           const ux = dx / d;
           const uy = dy / d;
           a.pos.x -= ux * push;
@@ -1292,36 +1294,49 @@ export class RugbyEngine {
     return { dir: { x: dir / len, y: dy / len }, sprint: nearest > 1.0 };
   }
 
+  /**
+   * Structured attacking shape: a scrum-half behind the ball, three staggered forward pods,
+   * then a deep 10–12–13–wing backline. This stops every support runner chasing one point.
+   */
   private supportOffset(number: number, open: 1 | -1): { dx: number; dy: number } {
     switch (number) {
-      case 9: return { dx: -3, dy: -open * 2.5 };
-      case 10: return { dx: -7, dy: open * 9 };
-      case 12: return { dx: -9, dy: open * 17 };
-      case 13: return { dx: -11, dy: open * 25 };
-      case 14: return open === 1 ? { dx: -12, dy: 33 } : { dx: -7, dy: 12 };
-      case 11: return open === -1 ? { dx: -12, dy: -33 } : { dx: -7, dy: -12 };
-      case 15: return { dx: -16, dy: open * 6 };
-      case 1: return { dx: -4, dy: 3.5 };
-      case 2: return { dx: -2.5, dy: -3 };
-      case 3: return { dx: -4, dy: -6.5 };
-      case 4: return { dx: -6, dy: 5 };
-      case 5: return { dx: -6, dy: -5 };
-      case 6: return { dx: -3, dy: 7 };
-      case 7: return { dx: -2, dy: 1 };
-      default: return { dx: -3.5, dy: -1.5 };
+      // Half-backs: first receiver stays available just behind the gain line.
+      case 9: return { dx: -3.2, dy: -open * 2 };
+      case 10: return { dx: -8.5, dy: open * 8 };
+      // Backline arc: each player owns a clear channel, with the open-side wing widest.
+      case 12: return { dx: -10.5, dy: open * 16 };
+      case 13: return { dx: -12.5, dy: open * 24 };
+      case 14: return open === 1 ? { dx: -14.5, dy: 33 } : { dx: -12, dy: 17 };
+      case 11: return open === -1 ? { dx: -14.5, dy: -33 } : { dx: -12, dy: -17 };
+      case 15: return { dx: -20, dy: -open * 6 };
+      // Forward pod nearest the ball (1–3): tight, but behind the ball carrier.
+      case 1: return { dx: -3.5, dy: open * 3.5 };
+      case 2: return { dx: -3.8, dy: open * 7 };
+      case 3: return { dx: -3.5, dy: open * 10.5 };
+      // Second pod lives on the blind/inside shoulder.
+      case 4: return { dx: -6.5, dy: -open * 8 };
+      case 5: return { dx: -6.8, dy: -open * 12 };
+      case 6: return { dx: -5.5, dy: -open * 16 };
+      // Third pod offers a late open-side option rather than joining the first pod.
+      case 7: return { dx: -7, dy: open * 16 };
+      case 8: return { dx: -7.5, dy: open * 21 };
+      default: return { dx: -8, dy: -open * 4 };
     }
   }
 
   private aiSupport(p: PlayerState, focus: Vec2): Decision {
     const t = p.team;
     const fF = this.fx(t, focus.x);
-    const open: 1 | -1 = focus.y < 35 ? 1 : -1;
+    // Open side points toward the greater amount of usable width, not simply a fixed screen side.
+    const open: 1 | -1 = focus.y <= 35 ? 1 : -1;
     const off = this.supportOffset(p.number, open);
     let tf = fF + off.dx;
-    tf = Math.min(tf, fF - 1);
+    // Rugby support cannot get ahead of the carrier before receiving a pass.
+    tf = Math.min(tf, fF - (p.isForward ? 1.4 : 2.2));
     tf = clamp(tf, 2, 118);
-    const target = { x: this.wx(t, tf), y: clamp(focus.y + off.dy, 2, W - 2) };
-    return this.moveTo(p, target, dist(p.pos, target) > 6);
+    // Keep the attack in a practical 5m–65m channel. This preserves width without piling up on touch.
+    const target = { x: this.wx(t, tf), y: clamp(focus.y + off.dy, 5, W - 5) };
+    return this.moveTo(p, target, dist(p.pos, target) > (p.isForward ? 4 : 5.5));
   }
 
   private aiDefend(p: PlayerState, ctx: FrameContext): Decision {
