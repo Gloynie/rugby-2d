@@ -1,9 +1,9 @@
 import type { RugbyEngine } from "./engine";
 import { keyLabel, type Bindings } from "./controls";
 import type { FrameOptions, PlayerVisual, Renderer, Snapshot } from "./render";
-import type { Stadium, Vec2 } from "./types";
+import type { Stadium, TeamIndex, Vec2 } from "./types";
 
-export type Scene = "intro" | "live" | "try" | "replay" | "halftime" | "fulltime";
+export type Scene = "intro" | "toss" | "tossChoice" | "live" | "try" | "replay" | "halftime" | "fulltime";
 
 const clamp = (v: number, a: number, b: number) => (v < a ? a : v > b ? b : v);
 const easeInOut = (k: number) => (k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2);
@@ -35,6 +35,9 @@ export class Director {
   private flash = 0;
   private introFrom: Vec2;
   private introTo: Vec2;
+  private tossWinner: TeamIndex = 0;
+  private tossChoice: "kick" | "ends" | null = null;
+  private tossApplied = false;
 
   constructor(
     private engine: RugbyEngine,
@@ -97,7 +100,7 @@ export class Director {
     }
   }
 
-  update(dt: number, skip: boolean, paused: boolean): FrameOptions {
+  update(dt: number, skip: boolean, paused: boolean, input?: { option1: boolean; option2: boolean; action: boolean }): FrameOptions {
     if (!paused) this.t += dt;
     this.flash = Math.max(0, this.flash - dt * 0.45);
     const f: FrameOptions = { stepEngine: false, frozen: false, zoom: 1, hideHUD: false, letterbox: 0, flash: this.flash };
@@ -164,7 +167,7 @@ export class Director {
           f.camTarget = { x: 60, y: 35 };
           f.drawOverlay = (r) => this.drawMatchupCard(r, clamp((this.t - positionsEnd) / 0.45, 0, 1));
         }
-        if (this.t >= this.introLength || (skip && !this.opts.attract)) this.scene = "live";
+        if (this.t >= this.introLength || (skip && !this.opts.attract)) this.beginToss();
         if (!this.opts.attract) {
           const existing = f.drawOverlay;
           f.drawOverlay = (r) => {
@@ -173,6 +176,46 @@ export class Director {
             r.text("PRESS " + keyLabel(this.opts.bindings.action, true) + " TO SKIP", r.bufW - 48, 39, { align: "center", color: "#facc15", size: 8 });
           };
         }
+        break;
+      }
+      case "toss": {
+        // Referee coin toss: spin for 1.4s, then reveal the winner.
+        if (!this.tossApplied && this.t > 1.4) {
+          if (this.tossChoice !== null) {
+            this.applyToss();
+            this.scene = "live";
+          } else {
+            this.scene = "tossChoice";
+            this.t = 0;
+          }
+        }
+        if (skip && !this.opts.attract) {
+          if (this.tossChoice === null) this.tossChoice = Math.random() < 0.5 ? "kick" : "ends";
+          this.applyToss();
+          this.scene = "live";
+        }
+        f.zoom = 1;
+        f.camTarget = { x: 60, y: 35 };
+        f.hideHUD = true;
+        f.letterbox = 1;
+        f.frozen = true;
+        f.drawOverlay = (r) => this.drawToss(r);
+        break;
+      }
+      case "tossChoice": {
+        f.zoom = 1;
+        f.camTarget = { x: 60, y: 35 };
+        f.hideHUD = true;
+        f.letterbox = 1;
+        f.frozen = true;
+        if (input?.option1) this.tossChoice = "kick";
+        else if (input?.option2) this.tossChoice = "ends";
+        else if (input?.action) this.tossChoice = "kick";
+        if (this.tossChoice !== null) {
+          this.applyToss();
+          this.scene = "live";
+        }
+        f.drawOverlay = (r) => this.drawTossChoice(r);
         break;
       }
       case "live":
@@ -277,6 +320,53 @@ export class Director {
   }
 
   // ---------- overlays ----------
+  private beginToss(): void {
+    this.scene = "toss";
+    this.t = 0;
+    this.tossApplied = false;
+    const user = this.engine.userTeam;
+    this.tossWinner = Math.random() < 0.5 ? 0 : 1;
+    if (this.opts.attract || user === null || this.tossWinner !== user) {
+      this.tossChoice = Math.random() < 0.5 ? "kick" : "ends";
+    } else {
+      this.tossChoice = null; // user decides after the coin lands
+    }
+  }
+
+  private applyToss(): void {
+    if (this.tossApplied) return;
+    this.tossApplied = true;
+    this.engine.applyTossDecision(this.tossWinner, this.tossChoice ?? "kick");
+  }
+
+  private drawToss(r: Renderer): void {
+    const e = this.engine;
+    r.panel(r.bufW / 2 - 150, r.bufH / 2 - 70, 300, 140, { fill: "rgba(5,10,20,0.92)", accent: "#facc15" });
+    r.text("COIN TOSS", r.bufW / 2, r.bufH / 2 - 58, { align: "center", size: 14, color: "#facc15" });
+    // spinning coin
+    const spin = Math.max(0.12, Math.abs(Math.cos(this.t * 9)));
+    const cx = r.bufW / 2;
+    const cy = r.bufH / 2 + 6;
+    const rw = 26 * spin;
+    r.fillEllipse(cx, cy, rw + 3, 26, "#0b1020");
+    r.fillEllipse(cx, cy, rw, 24, spin > 0.5 ? "#facc15" : "#e5e7eb");
+    if (this.t > 1.0) {
+      const winner = e.teams[this.tossWinner];
+      r.text(`${winner.data.name.toUpperCase()} WIN THE TOSS`, r.bufW / 2, r.bufH / 2 + 46, { align: "center", size: 8, color: "#ffffff" });
+    } else {
+      r.text("THE REFEREE TOSSES THE COIN", r.bufW / 2, r.bufH / 2 + 46, { align: "center", size: 7, color: "#94a3b8" });
+    }
+  }
+
+  private drawTossChoice(r: Renderer): void {
+    const e = this.engine;
+    r.panel(r.bufW / 2 - 170, r.bufH / 2 - 60, 340, 120, { fill: "rgba(5,10,20,0.94)", accent: e.teams[this.tossWinner].color });
+    r.text("YOU WON THE TOSS", r.bufW / 2, r.bufH / 2 - 46, { align: "center", size: 12, color: "#facc15" });
+    r.text("WHAT DOES THE CAPTAIN CHOOSE?", r.bufW / 2, r.bufH / 2 - 22, { align: "center", size: 8, color: "#94a3b8" });
+    r.text(`[${keyLabel(this.opts.bindings.opt1, true)}]  KICK OFF`, r.bufW / 2, r.bufH / 2 + 2, { align: "center", size: 10, color: "#ffffff" });
+    r.text(`[${keyLabel(this.opts.bindings.opt2, true)}]  CHOOSE ENDS`, r.bufW / 2, r.bufH / 2 + 26, { align: "center", size: 10, color: "#ffffff" });
+  }
+
   private drawStadiumPanLabel(r: Renderer): void {
     const s = this.stadium;
     const w = 310;

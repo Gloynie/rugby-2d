@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { ultimateClubs } from "@/db/schema";
 import { getCurrentUser } from "@/lib/auth";
 import { dbErrorResponse } from "@/lib/db-status";
-import { claimChallenge, hydrateUltimateClubState, isValidClubState, openPack, quickSell, recordUltimateResult, saveSquad, startCup, type PackId, type UltimateClubState } from "@/lib/ultimate";
+import { claimChallenge, currentLeagueMatch, hydrateUltimateClubState, isValidClubState, openPack, quickSell, recordLeagueResult, recordUltimateResult, saveSquad, startCup, type PackId, type UltimateClubState } from "@/lib/ultimate";
 import type { MatchResult } from "@/game/types";
 
 export const dynamic = "force-dynamic";
@@ -39,13 +39,13 @@ export async function POST(req: Request, ctx: Ctx) {
   if (!user) return NextResponse.json({ error: "Sign in to manage Ultimate Team." }, { status: 401 });
   const { id } = await ctx.params;
   const body = (await req.json().catch(() => null)) as {
-    action?: "open-pack" | "quick-sell" | "save-squad" | "claim-challenge" | "start-cup" | "record-match";
+    action?: "open-pack" | "quick-sell" | "save-squad" | "claim-challenge" | "start-cup" | "record-match" | "league-result";
     packId?: PackId;
     cardIds?: string[];
     lineup?: string[];
     bench?: string[];
     challengeId?: "win-3" | "tries-8" | "packs-3" | "trade-5" | "elite-1";
-    mode?: "friendly" | "cup";
+    mode?: "friendly" | "cup" | "league";
     result?: MatchResult;
   } | null;
   if (!body?.action) return NextResponse.json({ error: "Missing Ultimate Team action." }, { status: 400 });
@@ -74,9 +74,16 @@ export async function POST(req: Request, ctx: Ctx) {
       const out = startCup(state);
       if (out.error) return NextResponse.json({ error: out.error }, { status: 400 });
       state = out.state;
+    } else if (body.action === "league-result") {
+      if (!body.result || !state.league) return NextResponse.json({ error: "No active league season." }, { status: 400 });
+      const pending = currentLeagueMatch(state);
+      if (!pending) return NextResponse.json({ error: "No league match to record." }, { status: 400 });
+      const out = recordLeagueResult(state, body.result);
+      state = out.state;
+      extra = { promoted: out.promoted, seasonComplete: out.seasonComplete, reward: out.promoted === "up" ? 1200 : out.promoted === "down" ? 250 : out.seasonComplete ? 500 : 0 };
     } else if (body.action === "record-match") {
       if (!body.result || !body.mode) return NextResponse.json({ error: "Missing completed match result." }, { status: 400 });
-      const out = recordUltimateResult(state, body.result, body.mode);
+      const out = recordUltimateResult(state, body.result, body.mode === "league" ? "friendly" : body.mode);
       state = out.state; extra = { reward: out.reward, won: out.won };
     }
     await db.update(ultimateClubs).set({ state, clubName: state.clubName, updatedAt: new Date() }).where(eq(ultimateClubs.id, club.id));

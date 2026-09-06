@@ -139,7 +139,8 @@ export class GameRuntime {
     const dt = Math.min(0.1, (now - this.last) / 1000);
     this.last = now;
     const skip = this.input ? this.input.consumeSkip() : false;
-    const frame = this.director.update(dt, skip && !this.paused, this.paused);
+    const inputFrame = this.input ? this.input.frame() : IDLE_INPUT;
+    const frame = this.director.update(dt, skip && !this.paused, this.paused, inputFrame);
     this.checkAudio();
     let stepped = false;
     if (frame.stepEngine && !this.paused) {
@@ -148,7 +149,7 @@ export class GameRuntime {
       while (this.acc >= STEP && n < 4) {
         this.engine.update(
           STEP,
-          this.input ? this.input.frame() : IDLE_INPUT,
+          inputFrame,
           this.opts.remoteInput?.() ?? null,
         );
         this.director.afterStep();
@@ -159,7 +160,6 @@ export class GameRuntime {
       }
       if (n === 4) this.acc = 0;
     } else {
-      this.input?.frame();
       this.acc = 0;
     }
     this.renderer.render(this.engine, this.paused ? 0 : dt, frame);

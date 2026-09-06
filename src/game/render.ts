@@ -1802,6 +1802,13 @@ export class Renderer {
     this.b.fillRect(x, y, w, h);
   }
 
+  fillEllipse(x: number, y: number, rx: number, ry: number, color: string): void {
+    this.b.fillStyle = color;
+    this.b.beginPath();
+    this.b.ellipse(x, y, Math.max(0.5, rx), Math.max(0.5, ry), 0, 0, Math.PI * 2);
+    this.b.fill();
+  }
+
   private drawLetterbox(k: number): void {
     const h = Math.round(28 * k);
     this.rect(0, 0, this.bufW, h, "#000");

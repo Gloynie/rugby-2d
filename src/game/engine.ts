@@ -387,6 +387,26 @@ export class RugbyEngine {
     return this.players.find((pl) => pl.team === team && pl.isOnField) || this.players[team === 0 ? 0 : 15];
   }
 
+  /** Swap the ends each team attacks (used when a coin-toss winner chooses ends). */
+  swapEnds(): void {
+    this.teams[0].dir = this.teams[0].dir === 1 ? -1 : 1;
+    this.teams[1].dir = this.teams[1].dir === 1 ? -1 : 1;
+  }
+
+  /** Apply a coin-toss outcome: winner chooses to kick off or pick ends; loser gets the other. */
+  applyTossDecision(winner: TeamIndex, choice: "kick" | "ends"): { kicker: TeamIndex } {
+    if (choice === "ends") {
+      this.swapEnds();
+      this.firstHalfKicker = other(winner);
+    } else {
+      this.firstHalfKicker = winner;
+    }
+    this.setupKickoff(this.firstHalfKicker, "kickoff");
+    const verb = choice === "ends" ? "chose ends" : "will kick off";
+    this.say("COIN TOSS", `${this.teamName(winner)} ${verb}`, "#facc15", 2.6);
+    return { kicker: this.firstHalfKicker };
+  }
+
   /** Force a substitution during the game */
   makeSubstitution(team: TeamIndex, onNumber: number, offNumber: number): boolean {
     const playerOff = this.players.find((p) => p.team === team && p.number === offNumber && p.isOnField);

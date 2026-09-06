@@ -16,7 +16,8 @@ function makeCtx(canvas: any) {
     drawImage: (img: any, ...rest: number[]) => { calls++; if (!img) throw new Error("drawImage null"); if (!rest.every(Number.isFinite)) throw new Error("drawImage NaN " + rest.join(",")); },
     getImageData: (x: number, y: number, w: number, h: number) => ({ data: new Uint8ClampedArray(w * h * 4), width: w, height: h }),
     putImageData: () => {}, createPattern: () => ({}), clearRect: () => {}, save: () => {}, restore: () => {},
-    translate: () => {}, rotate: () => {}, scale: () => {},
+    translate: () => {}, rotate: () => {}, scale: () => {}, beginPath: () => {}, ellipse: () => {}, fill: () => {}, stroke: () => {},
+    setLineDash: () => {}, lineTo: () => {}, moveTo: () => {},
   };
   return ctx;
 }

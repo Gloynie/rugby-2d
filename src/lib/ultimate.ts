@@ -14,6 +14,10 @@ export interface CardRatings {
   handling: number;
   kicking: number;
   evasion: number;
+  leadership: number;
+  lineout: number;
+  agility: number;
+  discipline: number;
 }
 
 export interface UltimateCard {
@@ -63,6 +67,7 @@ export interface UltimateCup {
 
 export interface UltimateClubState {
   clubName: string;
+  league?: LeagueState;
   primary: string;
   secondary: string;
   coins: number;
@@ -138,10 +143,15 @@ function rarityFor(ovr: number): CardRarity {
 function ratingsFor(position: UltimatePosition, name: string, teamRating: number, ovr: number): CardRatings {
   const base = buildAttributes(position, name, teamRating);
   const role = roleFor(position);
+  const h = [...name].reduce((value, char) => (value * 31 + char.charCodeAt(0)) >>> 0, 17);
   const pace = round(25 + base.speed * 8.1 + (position >= 11 ? 8 : 0));
   const physicality = round(base.strength * 0.62 + (position <= 8 ? 23 : 5));
   const scrum = round(position <= 3 ? 66 + (base.strength - 55) * 0.48 : position <= 8 ? 42 + (base.strength - 55) * 0.22 : 22 + (base.strength - 55) * 0.08);
   const boost = ovr - (teamRating - 12);
+  const leadership = round((position === 9 ? 74 : position === 10 ? 78 : position === 2 ? 70 : position === 8 ? 68 : 48) + (h % 17) - 8 + boost * 0.3);
+  const lineout = round(position === 4 || position === 5 ? 78 + (h % 14) : position === 2 ? 70 : position === 6 || position === 7 ? 55 : 30);
+  const agility = round((base.evasion + base.speed * 6) / 2 + boost * 0.35);
+  const discipline = round(52 + (base.tackling - 60) * 0.25 + ((h >> 8) % 21) - 10);
   return {
     pace: round(pace + boost * 0.45),
     strength: round(base.strength + boost * 0.4),
@@ -151,6 +161,7 @@ function ratingsFor(position: UltimatePosition, name: string, teamRating: number
     handling: round(base.handling + boost * 0.45),
     kicking: round(base.kicking + boost * 0.35),
     evasion: round(base.evasion + (role === "wing" || role === "fullback" ? 5 : 0) + boost * 0.4),
+    leadership, lineout, agility, discipline,
   };
 }
 
@@ -202,8 +213,15 @@ function academyCard(position: UltimatePosition, index: number): UltimateCard {
       scrummaging: round(position <= 3 ? 61 + (index % 6) : position <= 8 ? 43 : 25),
       tackling: round(42 + (index % 15)), handling: round(43 + ((index * 3) % 14)),
       kicking: round(position === 10 || position === 15 ? 57 : 28 + (index % 12)), evasion: round(paceBase - 2 + (index % 8)),
+      leadership: round(40 + (index % 22)), lineout: round(position <= 5 ? 52 + (index % 16) : 24),
+      agility: round(paceBase + (index % 9)), discipline: round(45 + ((index * 5) % 22)),
     },
   };
+}
+
+/** Fair quick-sell valuation: exponential in OVR so elite cards are worth far more than bronze. */
+export function cardValue(card: UltimateCard): number {
+  return Math.round(Math.pow(1.115, card.ovr - 50) * 30);
 }
 
 function defaultChallenges(): UltimateChallenge[] {
@@ -228,7 +246,8 @@ export function createUltimateClub(clubName: string, primary = "#166534", second
     wins: 0, draws: 0, losses: 0, tries: 0, packsOpened: 0, tradedIn: 0, matchesPlayed: 0,
     challenges: defaultChallenges(),
     cup: null,
-    log: ["Welcome to Ultimate Team. Your bronze Academy XV is ready to build from."],
+    league: createLeague(0, 1),
+    log: ["Welcome to Ultimate Team. Your bronze Academy XV starts in Regional League Three. Win promotion to reach the URC Super League."],
   };
 }
 
@@ -443,6 +462,7 @@ export function isValidClubState(value: unknown): value is UltimateClubState {
 export function hydrateUltimateClubState(state: UltimateClubState): UltimateClubState {
   return {
     ...state,
+    league: state.league ?? createLeague(0, 1),
     cards: state.cards.map((card) => ({
       ...card,
       clubName: card.clubName ?? (card.teamId === "academy" ? "Academy XV" : CLUB_BY_PLAYER.get(card.name) ?? card.teamName),
@@ -453,4 +473,141 @@ export function hydrateUltimateClubState(state: UltimateClubState): UltimateClub
 
 export function cardTeam(card: UltimateCard): TeamData | undefined {
   return findTeam(card.teamId);
+}
+
+// ---------------------------------------------------------------------------
+// Promotion & relegation league ladder
+// ---------------------------------------------------------------------------
+
+export interface DivisionDef { id: string; name: string; tier: number; min: number; max: number }
+export const DIVISIONS: DivisionDef[] = [
+  { id: "regional-3", name: "Regional League Three", tier: 6, min: 44, max: 54 },
+  { id: "regional-2", name: "Regional League Two", tier: 5, min: 55, max: 62 },
+  { id: "regional-1", name: "Regional League One", tier: 4, min: 63, max: 70 },
+  { id: "national-2", name: "National Championship Two", tier: 3, min: 71, max: 77 },
+  { id: "national-1", name: "National Championship One", tier: 2, min: 78, max: 84 },
+  { id: "urc", name: "URC Super League", tier: 1, min: 85, max: 93 },
+];
+
+export interface LeagueMatch { home: number; away: number; played: boolean; homeScore?: number; awayScore?: number }
+export interface LeagueState {
+  divisionIndex: number;
+  season: number;
+  round: number; // 0-based completed rounds
+  opponents: UltimateOpponent[];
+  rounds: LeagueMatch[][];
+  promotion?: "up" | "down" | "stay";
+}
+
+function createAiOpponentInBand(min: number, max: number, seed: number): UltimateOpponent {
+  const mid = Math.round((min + max) / 2);
+  const opp = createAiOpponent("silver", seed);
+  // Re-roll card OVRs into the division band by re-generating cards at band target.
+  const target = clamp(mid + ((seed % 5) - 2), min, max);
+  const cards = [...POSITIONS, ...BENCH_ROLES].map((position, index) => {
+    const card = aiCard(target, position, index + seed);
+    card.ovr = clamp(card.ovr, min, max);
+    card.rarity = rarityFor(card.ovr);
+    return card;
+  });
+  return { ...opp, cards, teamId: `${opp.teamId}-d${min}`, level: min >= 78 ? "elite" : min >= 63 ? "gold" : min >= 55 ? "silver" : "bronze" };
+}
+
+function circleSchedule(size: number): [number, number][][] {
+  const ids = Array.from({ length: size }, (_, i) => i);
+  if (ids.length % 2) ids.push(-99);
+  const n = ids.length;
+  const rounds: [number, number][][] = [];
+  for (let r = 0; r < n - 1; r++) {
+    const round: [number, number][] = [];
+    for (let i = 0; i < n / 2; i++) {
+      const a = ids[i]; const b = ids[n - 1 - i];
+      if (a !== -99 && b !== -99) round.push(r % 2 === 0 ? [a, b] : [b, a]);
+    }
+    rounds.push(round);
+    ids.splice(1, 0, ids.pop() as number);
+  }
+  return rounds;
+}
+
+export function createLeague(divisionIndex: number, season: number, seed = Math.floor(Math.random() * 99999)): LeagueState {
+  const div = DIVISIONS[clamp(divisionIndex, 0, DIVISIONS.length - 1)];
+  const opponents = Array.from({ length: 7 }, (_, i) => createAiOpponentInBand(div.min, div.max, seed + i * 131 + i * i));
+  // index 0 = user (-1), opponents are 1..7
+  const rounds = circleSchedule(8).map((round) => round.map(([a, b]) => ({ home: a === 0 ? -1 : a, away: b === 0 ? -1 : b, played: false })));
+  return { divisionIndex, season, round: 0, opponents, rounds, promotion: undefined };
+}
+
+function avgOvrOf(cards: UltimateCard[]): number {
+  return Math.round(cards.slice(0, 15).reduce((sum, card) => sum + card.ovr, 0) / 15);
+}
+
+function leagueScore(strengthDiff: number): number {
+  const exp = 15 + strengthDiff * 0.6 + Math.random() * 12;
+  const tries = Math.max(0, Math.round((exp / 7) * (0.5 + Math.random() * 0.8)));
+  const conv = Math.round(tries * (0.5 + Math.random() * 0.35));
+  const pens = Math.round(Math.random() * 3);
+  return tries * 5 + conv * 2 + pens * 3;
+}
+
+export interface LeagueTable { teamKey: number; name: string; played: number; won: number; drawn: number; lost: number; pf: number; pa: number; pts: number; isUser: boolean }
+
+export function leagueTable(state: UltimateClubState): LeagueTable[] {
+  const league = state.league!;
+  const entries: LeagueTable[] = [
+    { teamKey: -1, name: state.clubName, played: 0, won: 0, drawn: 0, lost: 0, pf: 0, pa: 0, pts: 0, isUser: true },
+    ...league.opponents.map((opp, i) => ({ teamKey: i + 1, name: opp.name, played: 0, won: 0, drawn: 0, lost: 0, pf: 0, pa: 0, pts: 0, isUser: false })),
+  ];
+  const byKey = new Map(entries.map((e) => [e.teamKey, e]));
+  for (const round of league.rounds) for (const match of round) {
+    if (!match.played) continue;
+    const home = byKey.get(match.home)!; const away = byKey.get(match.away)!;
+    const hs = match.homeScore ?? 0; const as = match.awayScore ?? 0;
+    home.played++; away.played++; home.pf += hs; home.pa += as; away.pf += as; away.pa += hs;
+    if (hs > as) { home.won++; home.pts += 4; away.lost++; if (hs - as <= 7) away.pts++; }
+    else if (as > hs) { away.won++; away.pts += 4; home.lost++; if (as - hs <= 7) home.pts++; }
+    else { home.drawn++; away.drawn++; home.pts += 2; away.pts += 2; }
+    if (hs >= 20) home.pts++; if (as >= 20) away.pts++;
+  }
+  return entries.sort((a, b) => b.pts - a.pts || (b.pf - b.pa) - (a.pf - a.pa) || b.pf - a.pf);
+}
+
+export function currentLeagueMatch(state: UltimateClubState): LeagueMatch | null {
+  const league = state.league;
+  if (!league || league.round >= league.rounds.length) return null;
+  return league.rounds[league.round].find((m) => m.home === -1 || m.away === -1) ?? null;
+}
+
+export function recordLeagueResult(state: UltimateClubState, result: MatchResult): { state: UltimateClubState; promoted?: "up" | "down" | "stay"; seasonComplete: boolean } {
+  const league = state.league!;
+  const match = currentLeagueMatch(state);
+  if (!match) return { state, seasonComplete: true };
+  match.played = true;
+  match.homeScore = result.homeScore;
+  match.awayScore = result.awayScore;
+  // Simulate the other three matches in this round.
+  for (const other of league.rounds[league.round]) {
+    if (other.played) continue;
+    const homeOvr = other.home === -1 ? avgOvrOf(getSquadCards(state)) : avgOvrOf(league.opponents[other.home - 1].cards);
+    const awayOvr = other.away === -1 ? avgOvrOf(getSquadCards(state)) : avgOvrOf(league.opponents[other.away - 1].cards);
+    other.played = true;
+    other.homeScore = leagueScore(homeOvr - awayOvr);
+    other.awayScore = leagueScore(awayOvr - homeOvr);
+  }
+  let next: UltimateClubState = { ...state, league: { ...league, round: league.round + 1 } };
+  const seasonComplete = next.league!.round >= next.league!.rounds.length;
+  let promoted: "up" | "down" | "stay" | undefined;
+  if (seasonComplete) {
+    const table = leagueTable(next);
+    const pos = table.findIndex((e) => e.isUser) + 1;
+    if (pos <= 2 && next.league!.divisionIndex < DIVISIONS.length - 1) promoted = "up";
+    else if (pos >= 7 && next.league!.divisionIndex > 0) promoted = "down";
+    else promoted = "stay";
+    const newIndex = promoted === "up" ? next.league!.divisionIndex + 1 : promoted === "down" ? next.league!.divisionIndex - 1 : next.league!.divisionIndex;
+    const bonus = promoted === "up" ? 1200 : promoted === "down" ? 250 : 500;
+    next = { ...next, coins: next.coins + bonus };
+    next.league = { ...createLeague(newIndex, next.league!.season + 1), promotion: promoted };
+    next.log = [promoted === "up" ? `PROMOTED to ${DIVISIONS[newIndex].name}! +${bonus} coins.` : promoted === "down" ? `Relegated to ${DIVISIONS[newIndex].name}. +${bonus} coins.` : `Season complete (${pos}${pos === 1 ? "st" : pos === 2 ? "nd" : pos === 3 ? "rd" : "th"}). +${bonus} coins.`, ...next.log].slice(0, 20);
+  }
+  return { state: next, promoted, seasonComplete };
 }
