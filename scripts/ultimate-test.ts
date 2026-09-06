@@ -20,7 +20,12 @@ if (getSquadCards(club).length !== 23 || starterOvr > 60) throw new Error("start
 const packed = openPack(club, "bronze");
 if (packed.error || !packed.cards) throw new Error(packed.error ?? "bronze pack failed");
 club = packed.state;
-console.log("bronze pack", packed.cards.map((card) => `${card.name} ${card.ovr}`).join(", "));
+console.log("bronze pack", packed.cards.map((card) => `${card.name} ${card.ovr} · ${card.clubName} · ${card.country}`).join(", "));
+if (packed.cards.some((card) => !card.clubName || !card.country)) throw new Error("packed card missing club/country display data");
+const selectedIds = new Set([...club.lineup, ...club.bench]);
+const availableCollection = club.cards.filter((card) => !selectedIds.has(card.instanceId));
+console.log("available collection", availableCollection.length, "cards (matchday 23 hidden)");
+if (availableCollection.some((card) => selectedIds.has(card.instanceId))) throw new Error("collection includes selected squad cards");
 
 const ai = createAiOpponent("silver", 1122);
 const home = ultimateTeamData(club);

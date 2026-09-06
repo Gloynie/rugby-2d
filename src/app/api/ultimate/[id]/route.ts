@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { ultimateClubs } from "@/db/schema";
 import { getCurrentUser } from "@/lib/auth";
 import { dbErrorResponse } from "@/lib/db-status";
-import { claimChallenge, isValidClubState, openPack, quickSell, recordUltimateResult, saveSquad, startCup, type PackId, type UltimateClubState } from "@/lib/ultimate";
+import { claimChallenge, hydrateUltimateClubState, isValidClubState, openPack, quickSell, recordUltimateResult, saveSquad, startCup, type PackId, type UltimateClubState } from "@/lib/ultimate";
 import type { MatchResult } from "@/game/types";
 
 export const dynamic = "force-dynamic";
@@ -28,7 +28,7 @@ export async function GET(_req: Request, ctx: Ctx) {
   try {
     const club = await load(id, user.id);
     if (!club || !isValidClubState(club.state)) return NextResponse.json({ error: "Ultimate Club not found." }, { status: 404 });
-    return responseState(club.id, club.state);
+    return responseState(club.id, hydrateUltimateClubState(club.state));
   } catch (error) {
     return dbErrorResponse(error);
   }
@@ -52,7 +52,7 @@ export async function POST(req: Request, ctx: Ctx) {
   try {
     const club = await load(id, user.id);
     if (!club || !isValidClubState(club.state)) return NextResponse.json({ error: "Ultimate Club not found." }, { status: 404 });
-    let state = club.state as UltimateClubState;
+    let state = hydrateUltimateClubState(club.state as UltimateClubState);
     let extra: Record<string, unknown> = {};
     if (body.action === "open-pack") {
       const out = openPack(state, body.packId ?? "bronze");

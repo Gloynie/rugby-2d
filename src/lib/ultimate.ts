@@ -21,7 +21,10 @@ export interface UltimateCard {
   catalogueId: string;
   name: string;
   teamId: string;
+  /** Original catalogue team/nation used to rate the card. */
   teamName: string;
+  /** Latest club shown on the card where the current in-game roster can identify one. */
+  clubName?: string;
   country: string;
   position: UltimatePosition;
   positionName: string;
@@ -94,6 +97,31 @@ const STAR_OVR: Record<string, number> = {
   "Siya Kolisi": 88, "Rob Valetini": 87, "Willie le Roux": 86, "Sione Tuipulotu": 86,
 };
 
+/** Club labels for card presentation, inferred from the current club rosters in this game. */
+const CLUB_BY_PLAYER = new Map<string, string>();
+for (const roster of TEAMS.filter((team) => team.type === "club")) {
+  for (const player of roster.players) {
+    if (!player.endsWith("(Sub)") && !CLUB_BY_PLAYER.has(player)) CLUB_BY_PLAYER.set(player, roster.name);
+  }
+}
+
+function clubForCard(team: TeamData, player: string): string {
+  if (team.type === "club") return team.name;
+  return CLUB_BY_PLAYER.get(player) ?? "Club not listed";
+}
+
+/** Nationality labels come from the international squads where that player is represented. */
+const COUNTRY_BY_PLAYER = new Map<string, string>();
+for (const roster of TEAMS.filter((team) => team.type === "international")) {
+  for (const player of roster.players) {
+    if (!player.endsWith("(Sub)") && !COUNTRY_BY_PLAYER.has(player)) COUNTRY_BY_PLAYER.set(player, roster.country);
+  }
+}
+
+function countryForCard(team: TeamData, player: string): string {
+  return COUNTRY_BY_PLAYER.get(player) ?? team.country;
+}
+
 function cardOvr(position: UltimatePosition, name: string, teamRating: number): number {
   const h = [...name].reduce((value, char) => (value * 31 + char.charCodeAt(0)) >>> 0, 17);
   const roleBias = position <= 8 ? 0 : position === 9 || position === 10 ? 1 : 2;
@@ -134,7 +162,8 @@ function cardFromTeam(team: TeamData, position: UltimatePosition, name: string, 
     name,
     teamId: team.id,
     teamName: team.name,
-    country: team.country,
+    clubName: clubForCard(team, name),
+    country: countryForCard(team, name),
     position,
     positionName: roleFor(position).replace(/^./, (c) => c.toUpperCase()),
     ovr,
@@ -161,6 +190,7 @@ function academyCard(position: UltimatePosition, index: number): UltimateCard {
     name: ["Jordan", "Aiden", "Kai", "Liam", "Noah", "Tyler", "Ethan", "Mason"][index % 8] + " " + ["Hart", "Mills", "Taylor", "Reed", "Price", "Cole", "Shaw", "Fox"][position % 8],
     teamId: "academy",
     teamName: "Academy XV",
+    clubName: "Academy XV",
     country: "Academy",
     position,
     positionName: role.replace(/^./, (c) => c.toUpperCase()),
@@ -407,6 +437,18 @@ export function recordUltimateResult(state: UltimateClubState, result: MatchResu
 
 export function isValidClubState(value: unknown): value is UltimateClubState {
   return Boolean(value && typeof value === "object" && Array.isArray((value as UltimateClubState).cards) && Array.isArray((value as UltimateClubState).lineup));
+}
+
+/** Adds newer display metadata to clubs created before the card presentation update. */
+export function hydrateUltimateClubState(state: UltimateClubState): UltimateClubState {
+  return {
+    ...state,
+    cards: state.cards.map((card) => ({
+      ...card,
+      clubName: card.clubName ?? (card.teamId === "academy" ? "Academy XV" : CLUB_BY_PLAYER.get(card.name) ?? card.teamName),
+      country: card.teamId === "academy" ? card.country : COUNTRY_BY_PLAYER.get(card.name) ?? card.country,
+    })),
+  };
 }
 
 export function cardTeam(card: UltimateCard): TeamData | undefined {
