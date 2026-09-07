@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import * as audio from "@/game/audio";
 import { getTeam } from "@/game/data";
 import type { SessionUser } from "@/lib/auth";
 import type { Screen } from "./GameShell";
@@ -32,6 +33,8 @@ export default function MainMenu({ user, go }: { user: SessionUser | null; go: (
   const [sel, setSel] = useState(0);
   const [record, setRecord] = useState<UserRecord | null>(null);
   const [tick, setTick] = useState(0);
+  const mounted = useRef(false);
+  useEffect(() => { if (mounted.current) audio.playBlip(); else mounted.current = true; }, [sel]);
 
   useEffect(() => {
     const id = window.setInterval(() => setTick((v) => v + 1), 900);

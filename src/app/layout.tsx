@@ -7,9 +7,9 @@ export const metadata: Metadata = {
   applicationName: "PixelRuggas",
   description: "A pixel-art rugby union game with real teams, competitions and stadiums.",
   icons: {
-    icon: [{ url: "/icon.svg", type: "image/svg+xml" }, { url: "/brand/pixelruggas-ball.png", type: "image/png", sizes: "256x256" }],
+    icon: [{ url: "/icon.png", type: "image/png" }],
     shortcut: ["/favicon.png"],
-    apple: [{ url: "/brand/pixelruggas-ball.png", type: "image/png", sizes: "180x180" }],
+    apple: [{ url: "/icon.png", type: "image/png" }],
   },
 };
 
@@ -17,9 +17,9 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className="dark">
       <head>
-        <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-        <link rel="icon" href="/brand/pixelruggas-ball.png" type="image/png" sizes="256x256" />
-        <link rel="apple-touch-icon" href="/brand/pixelruggas-ball.png" />
+        <link rel="icon" href="/icon.png" type="image/png" />
+        <link rel="shortcut icon" href="/favicon.png" />
+        <link rel="apple-touch-icon" href="/icon.png" />
       </head>
       <body className="h-full bg-black text-white antialiased">{children}</body>
     </html>

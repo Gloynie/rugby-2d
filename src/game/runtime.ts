@@ -50,6 +50,8 @@ export class GameRuntime {
   private prevTries = 0;
   private prevScore = 0;
   private prevCeremonyCue = "";
+  private prevFlight = "none";
+  private prev22 = false;
 
   constructor(private opts: RuntimeOptions) {
     this.engine = new RugbyEngine(opts.config);
@@ -95,6 +97,11 @@ export class GameRuntime {
     this.renderer.bindings = b;
   }
 
+  private fx22(carrier: { team: 0 | 1; pos: { x: number } }): boolean {
+    const fx = this.engine.teams[carrier.team].dir === 1 ? carrier.pos.x : 120 - carrier.pos.x;
+    return fx > 88;
+  }
+
   private checkAudio(): void {
     const e = this.engine;
     const d = this.director;
@@ -113,10 +120,24 @@ export class GameRuntime {
     }
     // Phase transitions for sounds
     if (e.phase !== this.prevPhase) {
-      if (e.phase === "tackle" && this.prevPhase === "play") {
-        audio.playTackle();
-      }
+      if (e.phase === "tackle" && this.prevPhase === "play") audio.playTackle();
+      if (e.phase === "penaltyChoice") audio.playWhistleShort();
+      if (e.phase === "scrum") audio.playWhistleShort();
       this.prevPhase = e.phase;
+    }
+    // Ball flight sounds
+    if (e.ball.flight !== this.prevFlight) {
+      if (e.ball.flight === "pass") audio.playPass();
+      else if (e.ball.flight === "kick") audio.playKick();
+      this.prevFlight = e.ball.flight;
+    }
+    // Crowd swell when the ball carrier reaches the opponent 22
+    const carrier = e.ball.carrier !== null ? e.players[e.ball.carrier] : null;
+    if (carrier && this.fx22(carrier)) {
+      if (!this.prev22) audio.playCrowdSwell();
+      this.prev22 = true;
+    } else if (!carrier) {
+      this.prev22 = false;
     }
     // Try scored
     const totalTries = e.tries[0] + e.tries[1];

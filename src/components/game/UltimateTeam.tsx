@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import * as audio from "@/game/audio";
 import type { Bindings } from "@/game/controls";
 import { findTeam, getStadium } from "@/game/data";
 import type { MatchResult } from "@/game/types";
@@ -106,7 +107,12 @@ export default function UltimateTeam({ user, bindings, go, setInMatch }: { user:
           const data = battle.mode === "league"
             ? await commit({ action: "league-result", mode: "league", result })
             : await commit({ action: "record-match", mode: battle.mode, result });
-          if (data) { setCompletedBattle({ result, opponent: battle.opponent, userHome: battle.userHome }); setBattle(null); }
+          if (data) {
+            const won = battle.userHome ? result.homeScore > result.awayScore : result.awayScore > result.homeScore;
+            if (won || data.promoted === "up") audio.playFanfare();
+            setCompletedBattle({ result, opponent: battle.opponent, userHome: battle.userHome });
+            setBattle(null);
+          }
         }}
       />
     </div>;
@@ -133,7 +139,7 @@ export default function UltimateTeam({ user, bindings, go, setInMatch }: { user:
         <div className="flex items-center gap-3">
           <div className="rounded-lg border border-yellow-400/60 bg-yellow-400/10 px-4 py-2 text-center">
             <p className="text-lg font-black leading-none text-yellow-300">{club.coins.toLocaleString()}</p>
-            <p className="text-[10px] uppercase tracking-widest text-slate-400">Coins</p>
+            <p className="text-[10px] uppercase tracking-widest text-slate-400">Funds</p>
           </div>
           <div className="rounded-lg border border-white/15 bg-black/30 px-4 py-2 text-center">
             <p className="text-lg font-black leading-none">{totalOvr}</p>
@@ -154,9 +160,9 @@ export default function UltimateTeam({ user, bindings, go, setInMatch }: { user:
       {notice && <p className="mb-3 rounded-lg border-2 border-green-400/60 bg-green-950/60 px-4 py-2 text-lg text-green-100">{notice}</p>}
       <Scroll className="pr-2">
         {tab === "club" && <ClubHome club={club} onTab={setTab} />}
-        {tab === "squad" && <SquadTab club={club} busy={busy} onSave={async (lineup, bench) => { const data = await commit({ action: "save-squad", lineup, bench }); if (data) setNotice("Your matchday 23 is saved."); }} onSell={async (id) => { const data = await commit({ action: "quick-sell", cardIds: [id] }); if (data) setNotice(`Sold for +${data.coinsEarned ?? 0} coins.`); }} />}
-        {tab === "packs" && <PackTab club={club} busy={busy} onOpen={async (packId) => { const data = await commit({ action: "open-pack", packId }); const cards = data?.packedCards as UltimateCard[] | undefined; if (cards) { setPackCards(cards); setReveal(0); } }} onSell={async (id) => { const data = await commit({ action: "quick-sell", cardIds: [id] }); if (data) setNotice(`Sold for +${data.coinsEarned ?? 0} coins.`); }} />}
-        {tab === "challenges" && <Challenges club={club} busy={busy} onClaim={async (id) => { const data = await commit({ action: "claim-challenge", challengeId: id }); if (data) setNotice(`Challenge reward claimed: +${data.reward ?? 0} coins.`); }} />}
+        {tab === "squad" && <SquadTab club={club} busy={busy} onSave={async (lineup, bench) => { const data = await commit({ action: "save-squad", lineup, bench }); if (data) setNotice("Your matchday 23 is saved."); }} onSell={async (id) => { const data = await commit({ action: "quick-sell", cardIds: [id] }); if (data) { audio.playCoin(); setNotice(`Sold for +${data.coinsEarned ?? 0} funds.`); } }} />}
+        {tab === "packs" && <PackTab club={club} busy={busy} onOpen={async (packId) => { const data = await commit({ action: "open-pack", packId }); const cards = data?.packedCards as UltimateCard[] | undefined; if (cards) { audio.playPackOpen(); setPackCards(cards); setReveal(0); } }} onSell={async (id) => { const data = await commit({ action: "quick-sell", cardIds: [id] }); if (data) { audio.playCoin(); setNotice(`Sold for +${data.coinsEarned ?? 0} funds.`); } }} />}
+        {tab === "challenges" && <Challenges club={club} busy={busy} onClaim={async (id) => { const data = await commit({ action: "claim-challenge", challengeId: id }); if (data) { audio.playCoin(); setNotice(`Challenge reward claimed: +${data.reward ?? 0} funds.`); } }} />}
         {tab === "season" && <SeasonTab club={club} busy={busy} onPlayNext={() => { const match = currentLeagueMatch(club); if (!match) return; const userHome = match.home === -1; const oppIndex = (match.home === -1 ? match.away : match.home) - 1; setBattle({ opponent: club.league!.opponents[oppIndex], mode: "league", userHome }); }} onOnline={async (username) => { const data = await inviteUltimate(clubId!, username); if (data.error) setError(data.error); else { setNotice(`Ultimate Team invite sent to ${data.recipient}. Open Online to track it.`); go({ name: "online" }); } }} />}
       </Scroll>
       {packCards && <PackReveal cards={packCards} index={reveal} onNext={() => reveal < packCards.length - 1 ? setReveal(reveal + 1) : setPackCards(null)} />}
@@ -243,7 +249,7 @@ function ClubHome({ club, onTab }: { club: UltimateClubState; onTab: (tab: Tab) 
           <Kicker>Club record</Kicker>
           <div className="mt-4 grid grid-cols-2 gap-3 text-center">
             <Stat n={rating} label="Team OVR" />
-            <Stat n={club.coins.toLocaleString()} label="Coins" />
+            <Stat n={club.coins.toLocaleString()} label="Funds" />
             <Stat n={`${club.wins}-${club.draws}-${club.losses}`} label="W-D-L" />
             <Stat n={club.cards.length} label="Cards owned" />
           </div>
@@ -354,7 +360,7 @@ function SquadTab({ club, busy, onSave, onSell }: { club: UltimateClubState; bus
       </Panel>
       <Panel className="p-5">
         <Kicker>Available collection · {available.length}</Kicker>
-        <p className="mt-2 text-base text-slate-300">Players outside your matchday 23. Select one to place it in the squad, or quick sell it for coins.</p>
+        <p className="mt-2 text-base text-slate-300">Players outside your matchday 23. Select one to place it in the squad, or quick sell it for funds.</p>
         <div className="mt-3 grid max-h-[620px] grid-cols-2 gap-2 overflow-y-auto pr-1 scroll">
           {available.map((card) => <CardMini key={card.instanceId} card={card} selected={selected === card.instanceId} onSelect={() => setSelected(card.instanceId)} onSell={() => void onSell(card.instanceId)} />)}
           {available.length === 0 && <p className="col-span-full rounded-lg border border-white/10 p-4 text-center text-slate-500">Every owned card is in your matchday 23. Open a pack to grow the collection.</p>}
@@ -371,7 +377,7 @@ function PackTab({ club, busy, onOpen, onSell }: { club: UltimateClubState; busy
     <div className="grid gap-4 lg:grid-cols-2">
       <Panel className="p-6">
         <Kicker>Pack shop</Kicker>
-        <p className="mt-2 text-lg text-slate-300">Open packs using match coins. Any 80+ pull gets a full walkout reveal.</p>
+        <p className="mt-2 text-lg text-slate-300">Open packs using club funds. Any 80+ pull gets a full walkout reveal.</p>
         <div className="mt-4 grid gap-3">
           {PACKS.map((pack) => (
             <div key={pack.id} className="flex items-center justify-between rounded-lg border-2 p-4" style={{ borderColor: pack.color, background: `${pack.color}14` }}>
@@ -380,7 +386,7 @@ function PackTab({ club, busy, onOpen, onSell }: { club: UltimateClubState; busy
                 <p className="text-base text-slate-300">{pack.description}</p>
               </div>
               <div className="text-right">
-                <p className="text-xl font-black text-yellow-300">{pack.cost.toLocaleString()}c</p>
+                <p className="text-xl font-black text-yellow-300">{pack.cost.toLocaleString()} F</p>
                 <Btn primary className="mt-2 !text-[10px]" disabled={busy || club.coins < pack.cost} onClick={() => void onOpen(pack.id)}>Open pack</Btn>
               </div>
             </div>
@@ -455,7 +461,7 @@ function CardMini({ card, selected, onSelect, onSell }: { card: UltimateCard; se
           <p className="mt-0.5 text-xs text-slate-400">PAC {card.ratings.pace} · KCK {card.ratings.kicking} · LD {card.ratings.leadership}</p>
         </div>
       </button>
-      {onSell && <button type="button" onClick={onSell} className="mt-2 w-full rounded border-2 border-yellow-400/70 bg-yellow-400/10 px-2 py-1.5 text-[11px] font-black uppercase text-yellow-300 hover:bg-yellow-400/20">Quick sell · {value.toLocaleString()}c</button>}
+      {onSell && <button type="button" onClick={onSell} className="mt-2 w-full rounded border-2 border-yellow-400/70 bg-yellow-400/10 px-2 py-1.5 text-[11px] font-black uppercase text-yellow-300 hover:bg-yellow-400/20">Quick sell · {value.toLocaleString()} F</button>}
     </div>
   );
 }
@@ -471,7 +477,7 @@ function Challenges({ club, busy, onClaim }: { club: UltimateClubState; busy: bo
             <h3 className="mt-2 text-xl font-black uppercase">{ch.title}</h3>
             <p className="mt-2 text-lg text-slate-300">{ch.description}</p>
             <div className="mt-4 h-4 overflow-hidden rounded border border-white/20 bg-black/50"><div className="h-full bg-yellow-400" style={{ width: `${Math.min(100, (ch.progress / ch.target) * 100)}%` }} /></div>
-            <p className="mt-2 text-base text-slate-400">{ch.progress}/{ch.target} · reward <b className="text-yellow-300">{ch.reward} coins</b></p>
+            <p className="mt-2 text-base text-slate-400">{ch.progress}/{ch.target} · reward <b className="text-yellow-300">{ch.reward} funds</b></p>
             {!ch.claimed && <Btn primary className="mt-4" disabled={!complete || busy} onClick={() => void onClaim(ch.id)}>Claim reward</Btn>}
           </Panel>
         );
@@ -495,7 +501,7 @@ function SeasonTab({ club, busy, onPlayNext, onOnline }: { club: UltimateClubSta
           <Kicker>{division.name} · Season {league.season}</Kicker>
           <span className="text-base font-bold text-slate-400">Tier {division.tier} · Round {Math.min(league.round + 1, league.rounds.length)}/{league.rounds.length}</span>
         </div>
-        <p className="mt-2 text-lg text-slate-300">Finish top 2 to earn promotion toward the URC Super League. Bottom 2 are relegated. Every league result pays coins.</p>
+        <p className="mt-2 text-lg text-slate-300">Finish top 2 to earn promotion toward the URC Super League. Bottom 2 are relegated. Every league result pays funds — more for wins and for beating stronger clubs.</p>
         {league.promotion === "up" && <p className="mt-3 rounded-lg border border-green-400/60 bg-green-950/40 p-3 text-lg text-green-300">PROMOTED last season!</p>}
         {league.promotion === "down" && <p className="mt-3 rounded-lg border border-red-400/60 bg-red-950/40 p-3 text-lg text-red-300">Relegated last season. Climb back up!</p>}
         <div className="mt-4 overflow-hidden rounded-lg border border-white/10">

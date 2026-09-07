@@ -578,13 +578,25 @@ export function currentLeagueMatch(state: UltimateClubState): LeagueMatch | null
   return league.rounds[league.round].find((m) => m.home === -1 || m.away === -1) ?? null;
 }
 
-export function recordLeagueResult(state: UltimateClubState, result: MatchResult): { state: UltimateClubState; promoted?: "up" | "down" | "stay"; seasonComplete: boolean } {
+export function recordLeagueResult(state: UltimateClubState, result: MatchResult): { state: UltimateClubState; promoted?: "up" | "down" | "stay"; seasonComplete: boolean; reward: number } {
   const league = state.league!;
   const match = currentLeagueMatch(state);
-  if (!match) return { state, seasonComplete: true };
+  if (!match) return { state, seasonComplete: true, reward: 0 };
   match.played = true;
   match.homeScore = result.homeScore;
   match.awayScore = result.awayScore;
+  // Per-match funds: base by result, scaled by league tier and opponent quality.
+  const div = DIVISIONS[league.divisionIndex];
+  const userHome = match.home === -1;
+  const oppIndex = (match.home === -1 ? match.away : match.home) - 1;
+  const oppAvg = avgOvrOf(league.opponents[oppIndex].cards);
+  const userScore = userHome ? result.homeScore : result.awayScore;
+  const oppScore = userHome ? result.awayScore : result.homeScore;
+  const outcome = userScore > oppScore ? "win" : userScore === oppScore ? "draw" : "loss";
+  const tierMult = 1 + (DIVISIONS.length - div.tier) * 0.25;
+  const oppFactor = 0.6 + oppAvg / 100;
+  const base = outcome === "win" ? 260 : outcome === "draw" ? 130 : 70;
+  const matchReward = Math.round(base * tierMult * oppFactor);
   // Simulate the other three matches in this round.
   for (const other of league.rounds[league.round]) {
     if (other.played) continue;
@@ -594,9 +606,10 @@ export function recordLeagueResult(state: UltimateClubState, result: MatchResult
     other.homeScore = leagueScore(homeOvr - awayOvr);
     other.awayScore = leagueScore(awayOvr - homeOvr);
   }
-  let next: UltimateClubState = { ...state, league: { ...league, round: league.round + 1 } };
+  let next: UltimateClubState = { ...state, coins: state.coins + matchReward, league: { ...league, round: league.round + 1 } };
   const seasonComplete = next.league!.round >= next.league!.rounds.length;
   let promoted: "up" | "down" | "stay" | undefined;
+  let bonus = 0;
   if (seasonComplete) {
     const table = leagueTable(next);
     const pos = table.findIndex((e) => e.isUser) + 1;
@@ -604,10 +617,12 @@ export function recordLeagueResult(state: UltimateClubState, result: MatchResult
     else if (pos >= 7 && next.league!.divisionIndex > 0) promoted = "down";
     else promoted = "stay";
     const newIndex = promoted === "up" ? next.league!.divisionIndex + 1 : promoted === "down" ? next.league!.divisionIndex - 1 : next.league!.divisionIndex;
-    const bonus = promoted === "up" ? 1200 : promoted === "down" ? 250 : 500;
+    bonus = promoted === "up" ? 1200 : promoted === "down" ? 250 : 500;
     next = { ...next, coins: next.coins + bonus };
     next.league = { ...createLeague(newIndex, next.league!.season + 1), promotion: promoted };
-    next.log = [promoted === "up" ? `PROMOTED to ${DIVISIONS[newIndex].name}! +${bonus} coins.` : promoted === "down" ? `Relegated to ${DIVISIONS[newIndex].name}. +${bonus} coins.` : `Season complete (${pos}${pos === 1 ? "st" : pos === 2 ? "nd" : pos === 3 ? "rd" : "th"}). +${bonus} coins.`, ...next.log].slice(0, 20);
+    next.log = [promoted === "up" ? `PROMOTED to ${DIVISIONS[newIndex].name}! +${bonus} funds.` : promoted === "down" ? `Relegated to ${DIVISIONS[newIndex].name}. +${bonus} funds.` : `Season complete (${pos}${pos === 1 ? "st" : pos === 2 ? "nd" : pos === 3 ? "rd" : "th"}). +${bonus} funds.`, ...next.log].slice(0, 20);
   }
-  return { state: next, promoted, seasonComplete };
+  const oppName = league.opponents[oppIndex].name;
+  next.log = [`${outcome === "win" ? "WIN" : outcome === "draw" ? "DRAW" : "LOSS"} ${userScore}-${oppScore} v ${oppName} (+${matchReward} funds)`, ...next.log].slice(0, 20);
+  return { state: next, promoted, seasonComplete, reward: matchReward + bonus };
 }

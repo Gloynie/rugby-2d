@@ -80,7 +80,7 @@ export async function POST(req: Request, ctx: Ctx) {
       if (!pending) return NextResponse.json({ error: "No league match to record." }, { status: 400 });
       const out = recordLeagueResult(state, body.result);
       state = out.state;
-      extra = { promoted: out.promoted, seasonComplete: out.seasonComplete, reward: out.promoted === "up" ? 1200 : out.promoted === "down" ? 250 : out.seasonComplete ? 500 : 0 };
+      extra = { promoted: out.promoted, seasonComplete: out.seasonComplete, reward: out.reward };
     } else if (body.action === "record-match") {
       if (!body.result || !body.mode) return NextResponse.json({ error: "Missing completed match result." }, { status: 400 });
       const out = recordUltimateResult(state, body.result, body.mode === "league" ? "friendly" : body.mode);
