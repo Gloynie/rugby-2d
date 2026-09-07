@@ -27,7 +27,7 @@ import { Btn, Kicker, Panel, PlayerSprite, ScreenHeader, Scroll } from "./ui";
 
 type Tab = "club" | "squad" | "packs" | "challenges" | "season";
 type ClubSummary = { id: number; clubName: string; coins: number; rating: number; updatedAt: string };
-type Battle = { opponent: UltimateOpponent; mode: "friendly" | "league" };
+type Battle = { opponent: UltimateOpponent; mode: "friendly" | "league"; userHome: boolean };
 
 const COLOURS = ["#166534", "#1d4ed8", "#b91c1c", "#7c3aed", "#0f766e", "#b45309", "#be123c", "#1e293b"];
 const SEC_COLOURS = ["#facc15", "#f8fafc", "#111827", "#f8fafc", "#f8fafc", "#f8fafc", "#facc15", "#38bdf8"];
@@ -51,7 +51,7 @@ export default function UltimateTeam({ user, bindings, go, setInMatch }: { user:
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [battle, setBattle] = useState<Battle | null>(null);
-  const [completedBattle, setCompletedBattle] = useState<{ result: MatchResult; opponent: UltimateOpponent } | null>(null);
+  const [completedBattle, setCompletedBattle] = useState<{ result: MatchResult; opponent: UltimateOpponent; userHome: boolean } | null>(null);
   const [packCards, setPackCards] = useState<UltimateCard[] | null>(null);
   const [reveal, setReveal] = useState(0);
 
@@ -86,15 +86,18 @@ export default function UltimateTeam({ user, bindings, go, setInMatch }: { user:
 
   if (!user) return <SignInGate go={go} />;
   if (!club) return <ClubSetup summaries={summaries} onCreated={(id) => void loadClub(id)} go={go} />;
-  if (completedBattle) return <ResultOverlay result={completedBattle.result} club={club} opponent={completedBattle.opponent} onClose={() => { setCompletedBattle(null); setTab("club"); }} />;
+  if (completedBattle) return <ResultOverlay result={completedBattle.result} club={club} opponent={completedBattle.opponent} userHome={completedBattle.userHome} onClose={() => { setCompletedBattle(null); setTab("club"); }} />;
 
   if (battle) {
     const userSquad = ultimateTeamData(club);
     const aiSquad = opponentToTeam(battle.opponent);
     const stadium = getStadium("twickenham");
+    // Honour the league fixture orientation so recorded scores are never inverted.
+    const homeSquad = battle.userHome ? userSquad : aiSquad;
+    const awaySquad = battle.userHome ? aiSquad : userSquad;
     return <div className="fixed inset-0 z-40 bg-black">
       <MatchView
-        config={{ home: userSquad.team, away: aiSquad.team, userTeam: 0, halfSeconds: 150, difficulty: "normal", homeColor: club.primary, awayColor: aiSquad.team.primary, competition: battle.mode === "league" ? "ULTIMATE LEAGUE" : "SQUAD BATTLE", stadiumId: stadium.id, homePlayerOverrides: userSquad.overrides, awayPlayerOverrides: aiSquad.overrides }}
+        config={{ home: homeSquad.team, away: awaySquad.team, userTeam: battle.userHome ? 0 : 1, halfSeconds: 150, difficulty: "normal", homeColor: homeSquad.team.primary, awayColor: awaySquad.team.primary, competition: battle.mode === "league" ? "ULTIMATE LEAGUE" : "SQUAD BATTLE", stadiumId: stadium.id, homePlayerOverrides: homeSquad.overrides, awayPlayerOverrides: awaySquad.overrides }}
         stadium={stadium}
         competition={battle.mode === "league" ? "ULTIMATE LEAGUE" : "SQUAD BATTLE"}
         bindings={bindings}
@@ -103,7 +106,7 @@ export default function UltimateTeam({ user, bindings, go, setInMatch }: { user:
           const data = battle.mode === "league"
             ? await commit({ action: "league-result", mode: "league", result })
             : await commit({ action: "record-match", mode: battle.mode, result });
-          if (data) { setCompletedBattle({ result, opponent: battle.opponent }); setBattle(null); }
+          if (data) { setCompletedBattle({ result, opponent: battle.opponent, userHome: battle.userHome }); setBattle(null); }
         }}
       />
     </div>;
@@ -154,7 +157,7 @@ export default function UltimateTeam({ user, bindings, go, setInMatch }: { user:
         {tab === "squad" && <SquadTab club={club} busy={busy} onSave={async (lineup, bench) => { const data = await commit({ action: "save-squad", lineup, bench }); if (data) setNotice("Your matchday 23 is saved."); }} onSell={async (id) => { const data = await commit({ action: "quick-sell", cardIds: [id] }); if (data) setNotice(`Sold for +${data.coinsEarned ?? 0} coins.`); }} />}
         {tab === "packs" && <PackTab club={club} busy={busy} onOpen={async (packId) => { const data = await commit({ action: "open-pack", packId }); const cards = data?.packedCards as UltimateCard[] | undefined; if (cards) { setPackCards(cards); setReveal(0); } }} onSell={async (id) => { const data = await commit({ action: "quick-sell", cardIds: [id] }); if (data) setNotice(`Sold for +${data.coinsEarned ?? 0} coins.`); }} />}
         {tab === "challenges" && <Challenges club={club} busy={busy} onClaim={async (id) => { const data = await commit({ action: "claim-challenge", challengeId: id }); if (data) setNotice(`Challenge reward claimed: +${data.reward ?? 0} coins.`); }} />}
-        {tab === "season" && <SeasonTab club={club} busy={busy} onPlayNext={() => { const match = currentLeagueMatch(club); if (!match) return; const oppIndex = (match.home === -1 ? match.away : match.home) - 1; setBattle({ opponent: club.league!.opponents[oppIndex], mode: "league" }); }} onOnline={async (username) => { const data = await inviteUltimate(clubId!, username); if (data.error) setError(data.error); else { setNotice(`Ultimate Team invite sent to ${data.recipient}. Open Online to track it.`); go({ name: "online" }); } }} />}
+        {tab === "season" && <SeasonTab club={club} busy={busy} onPlayNext={() => { const match = currentLeagueMatch(club); if (!match) return; const userHome = match.home === -1; const oppIndex = (match.home === -1 ? match.away : match.home) - 1; setBattle({ opponent: club.league!.opponents[oppIndex], mode: "league", userHome }); }} onOnline={async (username) => { const data = await inviteUltimate(clubId!, username); if (data.error) setError(data.error); else { setNotice(`Ultimate Team invite sent to ${data.recipient}. Open Online to track it.`); go({ name: "online" }); } }} />}
       </Scroll>
       {packCards && <PackReveal cards={packCards} index={reveal} onNext={() => reveal < packCards.length - 1 ? setReveal(reveal + 1) : setPackCards(null)} />}
     </div>
@@ -531,12 +534,16 @@ function SeasonTab({ club, busy, onPlayNext, onOnline }: { club: UltimateClubSta
   );
 }
 
-function ResultOverlay({ result, club, opponent, onClose }: { result: MatchResult; club: UltimateClubState; opponent: UltimateOpponent; onClose: () => void }) {
-  const home = ultimateTeamData(club).team; const away = opponentToTeam(opponent).team;
+function ResultOverlay({ result, club, opponent, userHome, onClose }: { result: MatchResult; club: UltimateClubState; opponent: UltimateOpponent; userHome: boolean; onClose: () => void }) {
+  const userTeamData = ultimateTeamData(club).team;
+  const oppTeamData = opponentToTeam(opponent).team;
+  const home = userHome ? userTeamData : oppTeamData;
+  const away = userHome ? oppTeamData : userTeamData;
+  const won = userHome ? result.homeScore > result.awayScore : result.awayScore > result.homeScore;
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/80 p-4">
       <Panel className="max-h-[92vh] w-[1000px] max-w-full overflow-y-auto p-6 scroll">
-        <Kicker>Ultimate match complete</Kicker>
+        <Kicker>Ultimate match complete · {won ? "Victory" : result.homeScore === result.awayScore ? "Draw" : "Defeat"}</Kicker>
         <h2 className="mt-2 text-2xl font-black text-yellow-300">{home.short} {result.homeScore} - {result.awayScore} {away.short}</h2>
         <div className="mt-5"><MatchReport result={result} home={home} away={away} homeColor={home.primary} awayColor={away.primary} /></div>
         <Btn primary className="mt-5" onClick={onClose}>Return to Ultimate Team</Btn>

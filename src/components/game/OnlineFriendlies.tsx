@@ -299,7 +299,7 @@ function OnlineHost({ match, bindings, go }: { match: OnlineMatch; bindings: Bin
     };
     const postSnapshot = (engine: RugbyEngine, finish = false) => {
       const now = performance.now();
-      if (!finish && now - lastPublish.current < 180) return;
+      if (!finish && now - lastPublish.current < 100) return;
       lastPublish.current = now;
       void fetch(`/api/online-friendlies/${match.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: finish ? "finish" : "snapshot", snapshot: engine.exportNetworkState() }) });
     };
@@ -352,6 +352,11 @@ function OnlineGuest({ match, bindings, go }: { match: OnlineMatch; bindings: Bi
     let paused = false, disposed = false, raf = 0, seq = 0, lastSend = 0, lastState = 0;
     const input = new InputManager(bindings, () => { paused = !paused; setNote(paused ? "PAUSED LOCALLY · press pause to resume" : "CONNECTED · controlling away team"); }, () => { renderer.showHelp = !renderer.showHelp; });
     inputRef.current = input; input.attach();
+    // Client-side interpolation targets. The host is authoritative; the guest eases its
+    // rendered positions toward the latest snapshot every animation frame, so movement
+    // looks smooth at 60fps instead of jumping each time a snapshot arrives.
+    const targetPos = new Map<number, { x: number; y: number }>();
+    const ballTarget = { x: 60, y: 35, z: 0 };
     const updateState = async () => {
       try {
         const res = await fetch(`/api/online-friendlies/${match.id}`, { cache: "no-store" });
@@ -360,9 +365,16 @@ function OnlineGuest({ match, bindings, go }: { match: OnlineMatch; bindings: Bi
         if (d.status === "finished") setNote("FULL TIME · host ended match");
         const snap = d.snapshot as NetworkMatchState;
         if (snap && Array.isArray(snap.players)) {
+          // Capture current rendered positions, import authoritative state as targets,
+          // then restore rendered positions so we can ease toward the targets.
+          const prev = new Map(engine.players.map((p) => [p.id, { x: p.pos.x, y: p.pos.y }] as const));
+          const prevBall = { ...engine.ball.pos };
           engine.importNetworkState(snap);
-          // On the guest client highlight their remote-controlled player as the local one.
           engine.controlled = snap.remoteControlled;
+          for (const p of engine.players) targetPos.set(p.id, { x: p.pos.x, y: p.pos.y });
+          ballTarget.x = engine.ball.pos.x; ballTarget.y = engine.ball.pos.y; ballTarget.z = engine.ball.pos.z;
+          engine.players.forEach((p) => { const pr = prev.get(p.id); if (pr) { p.pos.x = pr.x; p.pos.y = pr.y; } });
+          engine.ball.pos = prevBall;
           if (d.status === "finished" && snap.matchResult) setResult(snap.matchResult);
           setNote(d.status === "finished" ? "FULL TIME" : "CONNECTED · You control away team");
         }
@@ -371,11 +383,22 @@ function OnlineGuest({ match, bindings, go }: { match: OnlineMatch; bindings: Bi
     const send = (frame: InputFrame) => void fetch(`/api/online-friendlies/${match.id}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "input", packet: { seq: ++seq, frame } }) });
     const loop = async (now: number) => {
       if (disposed) return;
+      const dt = 1 / 60;
       const frame = input.frame();
       const hasEdge = frame.passUp || frame.passDown || frame.kickRelease || frame.dropGoal || frame.action || frame.switchPlayer || frame.option1 || frame.option2 || frame.option3;
-      if (!paused && (now - lastSend > 75 || hasEdge)) { lastSend = now; send(frame); }
-      if (now - lastState > 120) { lastState = now; void updateState(); }
-      renderer.render(engine, 1 / 60, LIVE_FRAME);
+      if (!paused && (now - lastSend > 60 || hasEdge)) { lastSend = now; send(frame); }
+      if (now - lastState > 90) { lastState = now; void updateState(); }
+      // Ease rendered positions toward the authoritative targets every frame.
+      const ease = 1 - Math.exp(-dt * 11);
+      for (const p of engine.players) {
+        const tg = targetPos.get(p.id);
+        if (tg && p.down <= 0) { p.pos.x += (tg.x - p.pos.x) * ease; p.pos.y += (tg.y - p.pos.y) * ease; }
+        else if (tg) { p.pos.x = tg.x; p.pos.y = tg.y; }
+      }
+      engine.ball.pos.x += (ballTarget.x - engine.ball.pos.x) * ease;
+      engine.ball.pos.y += (ballTarget.y - engine.ball.pos.y) * ease;
+      engine.ball.pos.z += (ballTarget.z - engine.ball.pos.z) * ease;
+      renderer.render(engine, dt, LIVE_FRAME);
       raf = requestAnimationFrame(loop);
     };
     void loadPixelFonts().then(() => { if (!disposed) raf = requestAnimationFrame(loop); });
