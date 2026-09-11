@@ -240,12 +240,14 @@ export class Director {
         const r = this.engine.restart;
         f.camTarget = r ? { x: r.x, y: r.y } : { x: 60, y: 35 };
         f.camSpeed = 8;
-        if (input?.action) this.scrumUser = Math.min(1, this.scrumUser + 0.085);
+        // A genuine contest: the AI shoves hard and your push decays, so you must keep mashing.
+        if (input?.action) this.scrumUser = Math.min(1, this.scrumUser + 0.075);
+        this.scrumUser = Math.max(0, this.scrumUser - dt * 0.11);
         const userPack = this.engine.userTeam !== null ? this.engine.packStrengthPublic(this.engine.userTeam) : 70;
         const oppPack = this.engine.userTeam !== null ? this.engine.packStrengthPublic(otherIdx(this.engine.userTeam)) : 70;
-        const aiRate = 0.20 + Math.max(-0.08, Math.min(0.1, (oppPack - userPack) * 0.004));
+        const aiRate = 0.42 + Math.max(-0.12, Math.min(0.14, (oppPack - userPack) * 0.006));
         this.scrumAi = Math.min(1, this.scrumAi + aiRate * dt);
-        const done = this.scrumUser >= 1 || this.scrumAi >= 1 || this.t > 3.4;
+        const done = this.scrumUser >= 1 || this.scrumAi >= 1 || this.t > 3.2;
         if (done) {
           this.engine.scrumInteractive = false;
           this.engine.resolveScrumContest(this.scrumUser, this.scrumAi, this.engine.userTeam ?? 0);

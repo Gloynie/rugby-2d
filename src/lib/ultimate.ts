@@ -127,6 +127,62 @@ function countryForCard(team: TeamData, player: string): string {
   return COUNTRY_BY_PLAYER.get(player) ?? team.country;
 }
 
+/** Curated real-world shirt positions for known players so cards show accurate roles. */
+const KNOWN_POSITIONS: Record<string, number> = {
+  // England
+  "Joe Marler": 1, "Theo Dan": 2, "Dan Cole": 3, "Alex Coles": 5, "Ollie Chessum": 5, "Tom Willis": 2,
+  "Ethan Roots": 5, "Danny Care": 9, "Fin Smith": 10, "Harry Randall": 9, "Max Malins": 15,
+  "Ollie Sleightholme": 11, "Elliot Daly": 15, "Freddie Steward": 15, "Joe Carpenter": 15, "Ben Spencer": 9,
+  "Manu Tuilagi": 13, "Louis Lynagh": 11, "Cadghan Murley": 11, "Gabriel Ibitoye": 14, "Tom Roebuck": 14,
+  "Will Goodrick-Clarke": 14, "Ewan Richards": 4, "Elliott Obatoyinbo": 11,
+  // France
+  "Reda Wardi": 1, "Julien Marchand": 2, "Dorian Aldegheri": 3, "Paul Gabrillagues": 4, "Cameron Woki": 5,
+  "Anthime Jelich": 4, "Paul Boudehent": 7, "Sekou Macalou": 7, "Baptiste Couillande": 9, "Noah Lolesio": 10,
+  "Antoine Hastoy": 10, "Nicolas Depoort": 1, "Jonathan Danty": 12, "Matthis Lebel": 11,
+  "Émilien Gailleton": 12, "Théo Attissogbé": 11, "Éric Dos Santos": 1, "Rodrigue Neti": 1, "Alexandre Roumat": 5,
+  "Antoine Zeghdar": 13, "Romain Ntamack": 10, "Pita Ahki": 13, "Arthur Retière": 15,
+  // Ireland
+  "Finlay Bealham": 3, "Ronan Kelleher": 2, "Cian Healy": 1, "James Ryan": 4, "Iain Henderson": 5,
+  "Tom O'Toole": 3, "Jack Conan": 8, "Craig Casey": 9, "Jack Crowley": 10, "Ross Byrne": 10,
+  "Jordan Larmour": 15, "Jimmy O'Brien": 15, "Stuart McCloskey": 12, "Tommy Bowe": 11, "Rob Herring": 2,
+  "Dave Kilcoyne": 1, "Jeremy Loughman": 1, "Ed Byrne": 1, "Max Deegan": 6, "Jack Boyle": 3,
+  "Cian Prendergast": 6, "Shane Daly": 15, "Keith Earls": 11, "Simon Zebo": 15, "John Ryan": 3,
+  // New Zealand
+  "Ofa Tu'ungafasi": 1, "Asafo Aumua": 2, "Fletcher Newell": 3, "Patrick Tuipulotu": 4, "Sam Darry": 5,
+  "Akira Ioane": 6, "Luke Jacobson": 7, "Finlay Christie": 9, "Stephen Perofeta": 10, "Emoni Narawa": 14,
+  "Anton Lienert-Brown": 12, "David Havili": 12, "Sevu Reece": 14, "Mark Tele'a": 13, "Zarn Sullivan": 15,
+  "TJ Perenara": 9, "Ruben Love": 15, "Petrus Danskie": 2, "Ethan Blackadder": 7, "Tom Christie": 7,
+  // South Africa
+  "Trevor Nyakane": 3, "Bongi Mbonambi": 2, "Vincent Koch": 3, "RG Snyman": 5, "Salmaan Moerat": 5,
+  "Evan Roos": 8, "Deon Fourie": 7, "Cobus Reinach": 9, "Manie Libbok": 10, "Canan Moodie": 10,
+  "Makazole Mapimpi": 11, "Aphelele Fassi": 15, "Andre Esterhuizen": 12, "Lukhanyo Am": 12, "Grant Williams": 9,
+  "Siya Masuku": 11, "Kwagga Smith": 7, "Elton Jantjies": 10, "Ruan Nortje": 4, "Ben-Jason Dixon": 6,
+  // Australia
+  "Angus Bell": 1, "Dave Porecki": 2, "Taniela Tupou": 3, "Ryan Smith": 3, "Cadeyrn Neville": 5,
+  "Langi Gleeson": 6, "Charlie Cale": 7, "Tate McDermott": 9, "Tom Lynagh": 9, "Lachie Anderson": 15,
+  "Jock Campbell": 15, "Hunter Paisami": 12, "Lalakai Foketi": 13, "Darby Lancaster": 11, "Dylan Pietsch": 11,
+  "Ben Donaldson": 10, "Nic White": 9, "Reece Hodge": 15, "Marika Koroibete": 11, "Filipo Daugunu": 11,
+  // Argentina
+  "Facundo Gigena": 1, "Mayco Vivas": 1, "Ignacio Ruiz": 2, "Matías Alemanno": 4, "Lautaro Soccino": 2,
+  "Francisco Orrantia": 6, "Santiago Grondona": 7, "Lautaro Bazán": 9, "Santiago Carreras": 15, "Lucas Martínez": 9,
+  "Jerónimo de la Fuente": 12, "Matías Orlando": 12, "Emilio Cordero": 13, "Facundo Isa": 7, "Lucio Anconetani": 13,
+  "Ignacio Mendy": 11, "Socino Bautista": 2, "Agustín Segura": 14,
+  // Club corrections for players misplaced in squad lists
+  "Giacomo Ferrari": 1, "Simone Gesi": 15, "Scott Gregory": 12, "Onisi Ratave": 14,
+  "Siosifa Amone": 12, "Jaco Visagie": 2, "Asenathi Ntlabakanye": 15, "Renzo du Plessis": 2,
+  "Owen Farrell": 12, "Alex Goode": 15,
+};
+
+/** Distinct club names per division (lowest → top), so every division feels unique. */
+const DIVISION_CLUB_NAMES: string[][] = [
+  ["Bramley Stags", "Caldbeck Boars", "Dunmore Otters", "Fenbridge Rams", "Holloway Ravens", "Kestrel Park Foxes", "Marsh End Badgers"],
+  ["Ashvale Wolves", "Barrowmoor Falcons", "Craydon Bears", "Drakemill Eagles", "Elmsworth Lions", "Foxglove Hounds", "Ironbridge Bulls"],
+  ["Stonegate Sharks", "Ridgeway Rhinos", "Northcote Panthers", "Vale United", "Grantham Griffins", "Harlow Hawks", "Millford Mustangs"],
+  ["Capital City RFC", "Harbour Town", "Kingsbridge", "Eastmark", "Silverdale", "Port Regis", "Westmoor"],
+  ["Metropolis", "Northgate", "Sovereign", "Crown City", "Palatinate", "Ironclad", "Vanguard"],
+  ["Leinster", "Munster", "Bulls", "Stormers", "Crusaders", "Blues", "Brumbies"],
+];
+
 function cardOvr(position: UltimatePosition, name: string, teamRating: number): number {
   const h = [...name].reduce((value, char) => (value * 31 + char.charCodeAt(0)) >>> 0, 17);
   const roleBias = position <= 8 ? 0 : position === 9 || position === 10 ? 1 : 2;
@@ -188,8 +244,8 @@ export const PLAYER_CATALOGUE: UltimateCard[] = TEAMS.flatMap((team) =>
   team.players
     .filter((name) => !name.endsWith("(Sub)"))
     .map((name, index) =>
-      // First 15 keep their true shirt role; extra squad members take a plausible bench role.
-      cardFromTeam(team, (index < 15 ? index + 1 : BENCH_ROLES[(index - 15) % BENCH_ROLES.length]) as UltimatePosition, name, index)),
+      // Real-world shirt role from the curated database where known; otherwise shirt order / bench role.
+      cardFromTeam(team, (KNOWN_POSITIONS[name] ?? (index < 15 ? index + 1 : BENCH_ROLES[(index - 15) % BENCH_ROLES.length])) as UltimatePosition, name, index)),
 );
 
 function academyCard(position: UltimatePosition, index: number): UltimateCard {
@@ -503,7 +559,7 @@ export interface LeagueState {
   promotion?: "up" | "down" | "stay";
 }
 
-function createAiOpponentInBand(min: number, max: number, seed: number): UltimateOpponent {
+function createAiOpponentInBand(min: number, max: number, seed: number, divisionIndex: number, slot: number): UltimateOpponent {
   const mid = Math.round((min + max) / 2);
   const opp = createAiOpponent("silver", seed);
   // Re-roll card OVRs into the division band by re-generating cards at band target.
@@ -514,7 +570,9 @@ function createAiOpponentInBand(min: number, max: number, seed: number): Ultimat
     card.rarity = rarityFor(card.ovr);
     return card;
   });
-  return { ...opp, cards, teamId: `${opp.teamId}-d${min}`, level: min >= 78 ? "elite" : min >= 63 ? "gold" : min >= 55 ? "silver" : "bronze" };
+  const names = DIVISION_CLUB_NAMES[clamp(divisionIndex, 0, DIVISION_CLUB_NAMES.length - 1)];
+  const clubName = names[slot % names.length];
+  return { ...opp, name: clubName, cards, teamId: `div${divisionIndex}-${slot}`, level: min >= 78 ? "elite" : min >= 63 ? "gold" : min >= 55 ? "silver" : "bronze" };
 }
 
 function circleSchedule(size: number): [number, number][][] {
@@ -536,7 +594,7 @@ function circleSchedule(size: number): [number, number][][] {
 
 export function createLeague(divisionIndex: number, season: number, seed = Math.floor(Math.random() * 99999)): LeagueState {
   const div = DIVISIONS[clamp(divisionIndex, 0, DIVISIONS.length - 1)];
-  const opponents = Array.from({ length: 7 }, (_, i) => createAiOpponentInBand(div.min, div.max, seed + i * 131 + i * i));
+  const opponents = Array.from({ length: 7 }, (_, i) => createAiOpponentInBand(div.min, div.max, seed + i * 131 + i * i, divisionIndex, i));
   // index 0 = user (-1), opponents are 1..7
   const rounds = circleSchedule(8).map((round) => round.map(([a, b]) => ({ home: a === 0 ? -1 : a, away: b === 0 ? -1 : b, played: false })));
   return { divisionIndex, season, round: 0, opponents, rounds, promotion: undefined };
