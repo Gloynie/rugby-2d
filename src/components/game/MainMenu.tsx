@@ -2,44 +2,54 @@
 
 import { useEffect, useRef, useState } from "react";
 import * as audio from "@/game/audio";
-import { getTeam } from "@/game/data";
+import { COMPETITIONS, STADIUMS, TEAMS, getTeam } from "@/game/data";
 import type { SessionUser } from "@/lib/auth";
 import type { Screen } from "./GameShell";
-import { Kbd } from "./ui";
+import { Kbd, Kicker, PixelImage, RunningSprite } from "./ui";
 
-interface MenuItem {
+interface Tile {
   id: string;
-  label: string;
-  hint: string;
-  icon: string;
+  title: string;
+  sub: string;
   screen?: Screen;
+  soon?: boolean;
+  hot?: boolean;
 }
 
 interface UserRecord { wins: number; draws: number; losses: number }
 
+// Layout: two hero tiles on top (Kick Off + Ultimate Team emphasized), two rows of four small tiles.
+const ROWS = [[0, 1], [2, 3, 4, 5], [6, 7, 8, 9]];
+
+function neighbour(current: number, key: "left" | "right" | "up" | "down"): number {
+  const row = ROWS.findIndex((r) => r.includes(current));
+  const col = ROWS[row].indexOf(current);
+  if (key === "left") return ROWS[row][(col - 1 + ROWS[row].length) % ROWS[row].length];
+  if (key === "right") return ROWS[row][(col + 1) % ROWS[row].length];
+  const targetRow = key === "up" ? row - 1 : row + 1;
+  if (targetRow < 0 || targetRow >= ROWS.length) return current;
+  if (targetRow === 0) return col <= 1 ? 0 : 1;
+  const targetCols = ROWS[targetRow];
+  return targetCols[Math.min(col, targetCols.length - 1)];
+}
+
 export default function MainMenu({ user, go }: { user: SessionUser | null; go: (s: Screen) => void }) {
-  const items: MenuItem[] = [
-    { id: "play", label: "Kick Off", hint: "Quick match vs the CPU", icon: "KO", screen: { name: "play" } },
-    { id: "compete", label: "Competitions", hint: "World Cup · Six Nations · URC", icon: "CUP", screen: { name: "competitions" } },
-    { id: "ultimate", label: "Ultimate Team", hint: "Build a club · win promotion", icon: "UT", screen: { name: "ultimate" } },
-    { id: "online", label: "Online", hint: "Challenge a friend live", icon: "1v1", screen: { name: "online" } },
-    { id: "squads", label: "Squads", hint: "Browse every team", icon: "XV", screen: { name: "squads" } },
-    { id: "howto", label: "How To Play", hint: "Controls & laws of the game", icon: "?", screen: { name: "howto" } },
-    { id: "controls", label: "Controls", hint: "Rebind your keys", icon: "KEY", screen: { name: "controls" } },
-    user
-      ? { id: "record", label: "My Record", hint: "History & saved career", icon: "PRO", screen: { name: "profile" } }
-      : { id: "signin", label: "Sign In", hint: "Save your progress", icon: "ID", screen: { name: "profile", mode: "login" } },
+  const tiles: Tile[] = [
+    { id: "play", title: "Kick Off", sub: "Quick match vs the CPU", screen: { name: "play" }, hot: true },
+    { id: "ultimate", title: "Ultimate Team", sub: "Build your club · packs · promotion", screen: { name: "ultimate" }, hot: true },
+    { id: "compete", title: "Competitions", sub: "World Cup · 6N · URC", screen: { name: "competitions" } },
+    { id: "online", title: "Online", sub: "Challenge a friend", screen: { name: "online" } },
+    { id: "squads", title: "Squads", sub: "Every team", screen: { name: "squads" } },
+    { id: "controls", title: "Controls", sub: "Rebind keys", screen: { name: "controls" } },
+    { id: "howto", title: "How To Play", sub: "Laws & tips", screen: { name: "howto" } },
+    { id: "manager", title: "Manager", sub: "Coming soon", soon: true },
+    { id: "player", title: "Player Career", sub: "Coming soon", soon: true },
+    user ? { id: "record", title: "My Record", sub: "Career & history", screen: { name: "profile" } } : { id: "signin", title: "Sign In", sub: "Save progress", screen: { name: "profile", mode: "login" } },
   ];
   const [sel, setSel] = useState(0);
   const [record, setRecord] = useState<UserRecord | null>(null);
-  const [tick, setTick] = useState(0);
   const mounted = useRef(false);
   useEffect(() => { if (mounted.current) audio.playBlip(); else mounted.current = true; }, [sel]);
-
-  useEffect(() => {
-    const id = window.setInterval(() => setTick((v) => v + 1), 900);
-    return () => window.clearInterval(id);
-  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -53,90 +63,86 @@ export default function MainMenu({ user, go }: { user: SessionUser | null; go: (
     }).catch(() => {});
   }, [user]);
 
+  const select = (tile: Tile) => { if (!tile.soon && tile.screen) go(tile.screen); };
+
   useEffect(() => {
-    const cols = 2;
-    const rows = Math.ceil(items.length / cols);
     const h = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA")) return;
-      const row = Math.floor(sel / cols);
-      const col = sel % cols;
-      if (e.key === "ArrowDown") { e.preventDefault(); setSel(((row + 1) % rows) * cols + col); }
-      else if (e.key === "ArrowUp") { e.preventDefault(); setSel(((row - 1 + rows) % rows) * cols + col); }
-      else if (e.key === "ArrowRight") { e.preventDefault(); setSel(row * cols + Math.min(col + 1, cols - 1)); }
-      else if (e.key === "ArrowLeft") { e.preventDefault(); setSel(row * cols + Math.max(col - 1, 0)); }
-      else if (e.key === "Enter" || e.key === "NumpadEnter") { e.preventDefault(); const it = items[sel]; if (it.screen) go(it.screen); }
+      if (e.key === "ArrowLeft") setSel((s) => neighbour(s, "left"));
+      else if (e.key === "ArrowRight") setSel((s) => neighbour(s, "right"));
+      else if (e.key === "ArrowUp") setSel((s) => neighbour(s, "up"));
+      else if (e.key === "ArrowDown") setSel((s) => neighbour(s, "down"));
+      else if (e.key === "Enter" || e.key === "NumpadEnter") { e.preventDefault(); select(tiles[sel]); return; }
+      else return;
+      e.preventDefault();
     };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
   });
 
+  const cls = (i: number) => `tile ${sel === i ? "selected" : ""}`;
+  const showcase = [getTeam("rsa"), getTeam("nzl"), getTeam("fra")];
+
+  const small = (i: number) => (
+    <button key={tiles[i].id} className={`${cls(i)} relative min-h-[96px] ${tiles[i].soon ? "opacity-80" : ""}`} onMouseEnter={() => setSel(i)} onClick={() => select(tiles[i])}>
+      <div className="relative p-3">
+        <Kicker color={tiles[i].soon ? "#94a3b8" : undefined}>{tiles[i].soon ? "Soon" : "Menu"}</Kicker>
+        <h3 className="font-pixel mt-1 text-xs uppercase leading-relaxed">{tiles[i].title}</h3>
+        <p className="truncate text-slate-300">{tiles[i].sub}</p>
+      </div>
+      {tiles[i].soon && <div className="font-pixel pointer-events-none absolute inset-x-0 bottom-1 text-center text-[8px] uppercase tracking-widest text-yellow-300/90">Coming soon</div>}
+    </button>
+  );
+
   return (
-    <div className="relative flex h-full min-h-0 items-center justify-center px-4">
-      {/* dim the attract-mode match behind */}
-      <div className="absolute inset-0 bg-black/55" />
-
-      <div className="relative w-full max-w-3xl">
-        {/* Logo */}
-        <div className="mb-5 flex items-center justify-center gap-4">
-          <img src="/icon.png" alt="" className={`pixelated h-16 w-16 drop-shadow-[4px_4px_0_rgba(0,0,0,0.85)] transition-transform md:h-20 md:w-20 ${tick % 2 ? "translate-y-0.5" : ""}`} />
-          <div className="text-center">
-            <p className="text-sm font-bold uppercase tracking-[0.5em] text-green-400 drop-shadow-[2px_2px_0_#000]">Pixel</p>
-            <h1 className="font-pixel -mt-1 text-3xl leading-none text-white drop-shadow-[4px_4px_0_#000] md:text-5xl">RUGGAS</h1>
-          </div>
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
+        <div>
+          <Kicker>Main menu</Kicker>
+          <h1 className="font-pixel text-lg uppercase leading-relaxed drop-shadow-[3px_3px_0_#000] md:text-2xl">{user ? `Welcome back, ${user.username}` : "Welcome to PixelRuggas"}</h1>
         </div>
+        <p className="hidden text-right text-slate-300 md:block">
+          {TEAMS.length} teams · {COMPETITIONS.length} competitions · {STADIUMS.length} stadiums
+          {record && <span className="ml-3 text-green-400">{record.wins}W {record.draws}D {record.losses}L</span>}
+        </p>
+      </div>
 
-        {/* Menu console */}
-        <div className="rounded-xl border-4 border-white/20 bg-black/75 p-4 shadow-[8px_8px_0_rgba(0,0,0,0.6)] backdrop-blur-sm md:p-6">
-          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-            {items.map((item, i) => {
-              const active = i === sel;
-              return (
-                <button
-                  key={item.id}
-                  onMouseEnter={() => setSel(i)}
-                  onClick={() => item.screen && go(item.screen)}
-                  className={`flex items-center gap-3 rounded-lg border-2 px-3 py-2.5 text-left transition-all ${
-                    active ? "border-yellow-300 bg-yellow-400/15 shadow-[0_0_0_2px_rgba(250,204,21,0.4)]" : "border-white/10 bg-white/5 hover:border-white/30"
-                  }`}
-                >
-                  <span className={`font-pixel grid h-11 w-12 shrink-0 place-items-center rounded border-2 text-[10px] ${active ? "border-yellow-300 bg-yellow-400 text-black" : "border-white/20 bg-black/50 text-green-400"}`}>
-                    {item.icon}
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className={`block text-xl font-black uppercase leading-tight md:text-2xl ${active ? "text-yellow-300" : "text-slate-100"}`}>{item.label}</span>
-                    <span className="block truncate text-base text-slate-400">{item.hint}</span>
-                  </span>
-                  {active && <span className="font-pixel text-sm text-yellow-300">▶</span>}
-                </button>
-              );
-            })}
+      <div className="grid min-h-0 flex-1 grid-cols-12 grid-rows-[minmax(120px,1fr)_minmax(120px,1fr)_auto_auto] gap-3">
+        {/* Hero: Kick Off (emphasized) */}
+        <button className={`${cls(0)} col-span-12 row-span-2 border-yellow-300/70 md:col-span-8`} onMouseEnter={() => setSel(0)} onClick={() => select(tiles[0])}>
+          <div className="absolute inset-0 opacity-70"><PixelImage src="/img/hero.jpg" w={160} /></div>
+          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
+          <div className="absolute inset-0 bg-gradient-to-r from-black/70 to-transparent" />
+          <div className="absolute right-3 top-3 rounded border-2 border-yellow-300 bg-yellow-400/20 px-2 py-1 font-pixel text-[8px] text-yellow-300">★ FEATURED</div>
+          <div className="relative flex h-full flex-col justify-end p-6">
+            <Kicker>Play now</Kicker>
+            <h2 className="font-pixel mt-2 text-2xl uppercase leading-relaxed drop-shadow-[3px_3px_0_#000] md:text-4xl">{tiles[0].title}</h2>
+            <p className="mt-1 max-w-md text-xl text-slate-200">{tiles[0].sub}</p>
+            <span className="px-btn primary mt-4 w-fit"><Kbd>ENTER</Kbd> KICK OFF</span>
           </div>
+        </button>
 
-          {/* coming soon strip */}
-          <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-dashed border-white/15 px-3 py-2">
-            <span className="font-pixel text-[9px] text-yellow-300">COMING SOON</span>
-            <span className="rounded border border-white/15 bg-black/40 px-2 py-1 text-base text-slate-400">Manager Mode</span>
-            <span className="rounded border border-white/15 bg-black/40 px-2 py-1 text-base text-slate-400">Player Career</span>
+        {/* Hero: Ultimate Team (emphasized) */}
+        <button className={`${cls(1)} col-span-12 row-span-2 border-yellow-300/70 md:col-span-4`} onMouseEnter={() => setSel(1)} onClick={() => select(tiles[1])}>
+          <div className="absolute inset-0 opacity-70"><PixelImage src="/img/trophy.jpg" w={120} /></div>
+          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/30 to-transparent" />
+          <div className="absolute right-3 top-3 rounded border-2 border-yellow-300 bg-yellow-400/20 px-2 py-1 font-pixel text-[8px] text-yellow-300">★ FEATURED</div>
+          <div className="relative flex h-full flex-col justify-end p-5">
+            <Kicker>Build your club</Kicker>
+            <h2 className="font-pixel mt-2 text-lg uppercase leading-relaxed drop-shadow-[3px_3px_0_#000] md:text-2xl">{tiles[1].title}</h2>
+            <p className="mt-1 text-lg text-slate-300">{tiles[1].sub}</p>
           </div>
+        </button>
 
-          {/* record strip */}
-          {user && record && (
-            <div className="mt-3 flex flex-wrap items-center gap-4 rounded-lg border border-white/10 bg-black/40 px-4 py-2 text-lg">
-              <span className="text-slate-400">Coach <span className="text-slate-100">{user.username}</span></span>
-              <span className="text-green-400">{record.wins} W</span>
-              <span className="text-slate-200">{record.draws} D</span>
-              <span className="text-red-400">{record.losses} L</span>
-              <span className="ml-auto text-slate-500">record</span>
-            </div>
-          )}
+        {small(2)}{small(3)}{small(4)}{small(5)}
+        {small(6)}{small(7)}{small(8)}{small(9)}
+      </div>
 
-          <div className="mt-3 flex flex-wrap items-center gap-4 text-base text-slate-400">
-            <span><Kbd>↑↓←→</Kbd> select</span>
-            <span><Kbd>ENTER</Kbd> confirm</span>
-            <span className="ml-auto font-pixel text-[8px] text-slate-600">PIXELRUGGAS v1.0</span>
-          </div>
-        </div>
+      <div className="mt-2 hidden items-center gap-4 text-slate-400 md:flex">
+        <span><Kbd>↑↓←→</Kbd> navigate</span>
+        <span><Kbd>ENTER</Kbd> select</span>
+        <span className="ml-auto flex items-end gap-1 opacity-80">{showcase.map((t, i) => <RunningSprite key={t.id} jersey={t.primary} jersey2={t.secondary} number={[8, 10, 14][i]} name={t.players[[7, 9, 13][i]]} scale={1} />)}</span>
       </div>
     </div>
   );

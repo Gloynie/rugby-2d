@@ -242,6 +242,9 @@ export class RugbyEngine {
   finished = false;
   aiSpeedMult = 1;
   rng: () => number = Math.random;
+  /** When the user's team is in a scrum, the director runs a mash contest instead of auto-resolve. */
+  scrumInteractive = false;
+  fendCooldown = 0;
 
   // --- New features ---
   referee: RefereeState;
@@ -575,6 +578,18 @@ export class RugbyEngine {
     const v = this.rng();
     return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
   }
+  nearestOpponent(p: PlayerState): PlayerState | null {
+    let best: PlayerState | null = null;
+    let bd = 99;
+    for (const o of this.players) {
+      if (!o.isOnField) continue;
+      if (o.team === p.team || o.down > 0) continue;
+      const d = dist(o.pos, p.pos);
+      if (d < bd) { bd = d; best = o; }
+    }
+    return best;
+  }
+
   nearestOpponentDist(p: PlayerState): number {
     let best = 99;
     for (const o of this.players) {
@@ -708,6 +723,7 @@ export class RugbyEngine {
     dt *= this.spectatorSpeed;
     this.dt = dt;
     this.time += dt;
+    if (this.fendCooldown > 0) this.fendCooldown -= dt;
     
     // Update match officials (referee + touch judges)
     this.updateOfficials(dt);
@@ -1081,6 +1097,19 @@ export class RugbyEngine {
       }
       if (input.action && this.fx(p.team, p.pos.x) >= 109.6) {
         this.scoreTry(p);
+      } else if (input.action && this.fendCooldown <= 0 && this.nearestOpponentDist(p) < 1.9) {
+        // Stiff-arm fend: strength + evasion vs defender's tackle.
+        this.fendCooldown = 1.1;
+        const def = this.nearestOpponent(p);
+        const chance = 0.4 + (p.attrs.strength + p.attrs.evasion - (def ? def.attrs.tackling + def.attrs.strength : 140)) / 300;
+        if (def && this.rng() < chance) {
+          def.down = 1.4;
+          def.anim = "dive";
+          p.anim = "bounce";
+          p.animUntil = this.time + 0.5;
+          this.say("STIFF ARM!", `${p.name} fends off ${def.name}!`, this.teams[p.team].color, 1.6);
+          this.pushComment(`Stiff arm! ${p.name} fends off the tackle.`, p.team);
+        }
       }
     } else {
       this.charging = false;
@@ -2068,9 +2097,10 @@ export class RugbyEngine {
     this.ball.carrier = null;
     this.ball.pos = { x: this.wx(team, fM), y: my, z: 0 };
     this.phase = "scrum";
-    this.phaseTimer = 2.0;
+    this.scrumInteractive = this.userTeam !== null;
+    this.phaseTimer = this.scrumInteractive ? 999 : 2.0;
     this.possession = team;
-    this.say("SCRUM", `${this.teamName(team)} put-in`, "#ffffff", 2);
+    this.say("SCRUM", this.scrumInteractive ? "MASH [SPACE] TO SHOVE!" : `${this.teamName(team)} put-in`, "#ffffff", 2.4);
     if (this.userTeam !== null) this.controlled = this.pl(this.userTeam, 9).id;
   }
 
@@ -2078,6 +2108,10 @@ export class RugbyEngine {
     let s = 0;
     for (let n = 1; n <= 8; n++) s += this.pl(team, n).attrs.strength;
     return s / 8;
+  }
+
+  packStrengthPublic(team: TeamIndex): number {
+    return this.packStrength(team);
   }
 
   private resolveScrum(): void {
@@ -2095,6 +2129,39 @@ export class RugbyEngine {
     }
     const pWin = clamp(0.86 + diff * 0.004, 0.6, 0.96);
     const winner: TeamIndex = this.rng() < pWin ? att : def;
+    this.finishScrum(winner);
+  }
+
+  /** Resolve an interactive scrum contest driven by the director mash mini-game. */
+  resolveScrumContest(userPush: number, aiPush: number, userTeam: TeamIndex): void {
+    const r = this.restart;
+    if (!r) return;
+    const att = r.team;
+    const def = other(att);
+    for (const p of this.players) { if (p.isOnField) p.busy = p.isForward ? 1.2 : 0; }
+    const userDominant = userPush >= 1 && aiPush < 0.5;
+    const aiDominant = aiPush >= 1 && userPush < 0.5;
+    if (userDominant) {
+      this.say("DOMINANT SCRUM!", `Penalty to ${this.teamName(userTeam)} – illegal shove`, "#fbbf24");
+      this.pushComment(`Dominant scrum! Penalty to ${this.teamName(userTeam)}.`, userTeam);
+      this.scheduleRestart("penalty", userTeam, r.x, r.y);
+      return;
+    }
+    if (aiDominant) {
+      this.say("DOMINANT SCRUM!", `Penalty to ${this.teamName(other(userTeam))} – illegal shove`, "#fbbf24");
+      this.pushComment(`Dominant scrum! Penalty to ${this.teamName(other(userTeam))}.`, other(userTeam));
+      this.scheduleRestart("penalty", other(userTeam), r.x, r.y);
+      return;
+    }
+    const userWon = userPush >= aiPush;
+    this.finishScrum(userWon ? userTeam : other(userTeam));
+  }
+
+  private finishScrum(winner: TeamIndex): void {
+    const r = this.restart;
+    if (!r) return;
+    const att = r.team;
+    const def = other(att);
     this.teamStats[winner].scrumsWon++;
     if (winner !== att) {
       this.say("SCRUM TURNOVER!", `${this.teamName(def)} win it against the head`, "#fbbf24");

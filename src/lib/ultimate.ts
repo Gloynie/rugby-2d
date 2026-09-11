@@ -187,7 +187,9 @@ function cardFromTeam(team: TeamData, position: UltimatePosition, name: string, 
 export const PLAYER_CATALOGUE: UltimateCard[] = TEAMS.flatMap((team) =>
   team.players
     .filter((name) => !name.endsWith("(Sub)"))
-    .map((name, index) => cardFromTeam(team, ((index % 15) + 1) as UltimatePosition, name, index)),
+    .map((name, index) =>
+      // First 15 keep their true shirt role; extra squad members take a plausible bench role.
+      cardFromTeam(team, (index < 15 ? index + 1 : BENCH_ROLES[(index - 15) % BENCH_ROLES.length]) as UltimatePosition, name, index)),
 );
 
 function academyCard(position: UltimatePosition, index: number): UltimateCard {
@@ -219,9 +221,11 @@ function academyCard(position: UltimatePosition, index: number): UltimateCard {
   };
 }
 
-/** Fair quick-sell valuation: exponential in OVR so elite cards are worth far more than bronze. */
+/** Fair quick-sell valuation: exponential in OVR with a rarity floor so cards sell for what they're worth. */
 export function cardValue(card: UltimateCard): number {
-  return Math.round(Math.pow(1.115, card.ovr - 50) * 30);
+  const floors: Record<CardRarity, number> = { bronze: 30, silver: 150, gold: 600, elite: 2000 };
+  const curve = Math.pow(1.12, card.ovr - 50) * 40;
+  return Math.max(floors[card.rarity], Math.round(curve));
 }
 
 function defaultChallenges(): UltimateChallenge[] {

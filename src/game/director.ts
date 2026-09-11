@@ -3,7 +3,7 @@ import { keyLabel, type Bindings } from "./controls";
 import type { FrameOptions, PlayerVisual, Renderer, Snapshot } from "./render";
 import type { Stadium, TeamIndex, Vec2 } from "./types";
 
-export type Scene = "intro" | "toss" | "tossChoice" | "live" | "try" | "replay" | "halftime" | "fulltime";
+export type Scene = "intro" | "toss" | "tossChoice" | "live" | "try" | "replay" | "halftime" | "fulltime" | "scrum";
 
 const clamp = (v: number, a: number, b: number) => (v < a ? a : v > b ? b : v);
 const easeInOut = (k: number) => (k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2);
@@ -13,6 +13,7 @@ const lerp = (a: number, b: number, k: number) => a + (b - a) * k;
 const REPLAY_SPEED = 0.5;
 const REPLAY_LENGTH = 4.2;
 const RING_SECONDS = 10;
+const otherIdx = (t: TeamIndex): TeamIndex => (t === 0 ? 1 : 0);
 
 export interface DirectorOptions {
   attract: boolean;
@@ -38,6 +39,8 @@ export class Director {
   private tossWinner: TeamIndex = 0;
   private tossChoice: "kick" | "ends" | null = null;
   private tossApplied = false;
+  private scrumUser = 0;
+  private scrumAi = 0;
 
   constructor(
     private engine: RugbyEngine,
@@ -221,7 +224,36 @@ export class Director {
       case "live":
         f.stepEngine = true;
         f.zoom = 1;
+        if (this.engine.scrumInteractive && this.engine.phase === "scrum") {
+          this.scene = "scrum";
+          this.t = 0;
+          this.scrumUser = 0;
+          this.scrumAi = 0;
+        }
         break;
+      case "scrum": {
+        // Fast-click scrum contest: mash to shove; double the AI's push to win a penalty.
+        f.frozen = true;
+        f.zoom = 1.5;
+        f.hideHUD = true;
+        f.letterbox = 1;
+        const r = this.engine.restart;
+        f.camTarget = r ? { x: r.x, y: r.y } : { x: 60, y: 35 };
+        f.camSpeed = 8;
+        if (input?.action) this.scrumUser = Math.min(1, this.scrumUser + 0.085);
+        const userPack = this.engine.userTeam !== null ? this.engine.packStrengthPublic(this.engine.userTeam) : 70;
+        const oppPack = this.engine.userTeam !== null ? this.engine.packStrengthPublic(otherIdx(this.engine.userTeam)) : 70;
+        const aiRate = 0.20 + Math.max(-0.08, Math.min(0.1, (oppPack - userPack) * 0.004));
+        this.scrumAi = Math.min(1, this.scrumAi + aiRate * dt);
+        const done = this.scrumUser >= 1 || this.scrumAi >= 1 || this.t > 3.4;
+        if (done) {
+          this.engine.scrumInteractive = false;
+          this.engine.resolveScrumContest(this.scrumUser, this.scrumAi, this.engine.userTeam ?? 0);
+          this.scene = "live";
+        }
+        f.drawOverlay = (r2) => this.drawScrumContest(r2);
+        break;
+      }
       case "try": {
         const scorer = e.tryScorer !== null ? e.players[e.tryScorer] : null;
         f.frozen = true;
@@ -365,6 +397,24 @@ export class Director {
     r.text("WHAT DOES THE CAPTAIN CHOOSE?", r.bufW / 2, r.bufH / 2 - 22, { align: "center", size: 8, color: "#94a3b8" });
     r.text(`[${keyLabel(this.opts.bindings.opt1, true)}]  KICK OFF`, r.bufW / 2, r.bufH / 2 + 2, { align: "center", size: 10, color: "#ffffff" });
     r.text(`[${keyLabel(this.opts.bindings.opt2, true)}]  CHOOSE ENDS`, r.bufW / 2, r.bufH / 2 + 26, { align: "center", size: 10, color: "#ffffff" });
+  }
+
+  private drawScrumContest(r: Renderer): void {
+    const e = this.engine;
+    const user = e.userTeam ?? 0;
+    const w = 340;
+    const x = r.bufW / 2 - w / 2;
+    const y = r.bufH / 2 - 70;
+    r.panel(x, y, w, 140, { fill: "rgba(5,10,20,0.94)", accent: "#facc15" });
+    r.text("SCRUM! MASH [SPACE]!", r.bufW / 2, y + 10, { align: "center", size: 12, color: "#facc15" });
+    const bw = w - 40;
+    r.text("YOU", x + 20, y + 42, { size: 8, color: e.teams[user].color });
+    r.bar(x + 70, y + 42, bw - 50, 10, this.scrumUser, "#22c55e");
+    r.text("THEM", x + 20, y + 66, { size: 8, color: e.teams[otherIdx(user)].color });
+    r.bar(x + 70, y + 66, bw - 50, 10, this.scrumAi, "#ef4444");
+    r.text("DOUBLE THEIR SHOVE TO WIN A PENALTY", r.bufW / 2, y + 96, { align: "center", size: 7, color: "#94a3b8" });
+    const clicks = Math.round(this.scrumUser / 0.085);
+    r.text(`${clicks} SHOVES`, r.bufW / 2, y + 114, { align: "center", size: 8, color: "#ffffff" });
   }
 
   private drawStadiumPanLabel(r: Renderer): void {
