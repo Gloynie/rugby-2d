@@ -21,7 +21,7 @@ import PlayerCareerHub from "./PlayerCareerHub";
 import OnlineFriendlies, { OnlineMatchRoom } from "./OnlineFriendlies";
 import UltimateTeam from "./UltimateTeam";
 import MainMenu from "./MainMenu";
-import MenuBackground from "./MenuBackground";
+import MenuScene from "./MenuScene";
 import PlaySetup from "./PlaySetup";
 import ProfileScreen from "./ProfileScreen";
 import SquadsScreen from "./Squads";
@@ -115,7 +115,11 @@ export default function GameShell({ initialUser, initialScreen }: { initialUser:
 
   return (
     <div className="fixed inset-0 select-none overflow-hidden bg-black text-white">
-      {!inMatch && booted && <MenuBackground />}
+      {!inMatch && booted && screen.name !== "menu" && (
+        <div className="pointer-events-none absolute inset-0 opacity-45">
+          <MenuScene />
+        </div>
+      )}
       {!inMatch && (
         <>
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-black/70 via-black/20 to-black/55" />
@@ -137,7 +141,7 @@ export default function GameShell({ initialUser, initialScreen }: { initialUser:
                   <button
                     key={t.label}
                     onClick={() => go(t.screen)}
-                    className={`font-display border-b-2 px-3 py-2 text-[15px] font-bold uppercase tracking-[0.18em] transition ${
+                    className={`font-pixel border-b-2 px-3 py-2 text-[10px] uppercase tracking-[0.2em] transition ${
                       active ? "border-yellow-400 text-yellow-400" : "border-transparent text-slate-300 hover:text-white"
                     }`}
                   >
@@ -155,18 +159,18 @@ export default function GameShell({ initialUser, initialScreen }: { initialUser:
                     ) : (
                       <span className="font-pixel grid h-7 w-7 place-items-center bg-yellow-400 text-[9px] text-black">{user.username.slice(0, 2).toUpperCase()}</span>
                     )}
-                    <span className="font-display text-[15px] font-bold tracking-wide">{user.username.toUpperCase()}</span>
+                    <span className="font-pixel text-[10px]">{user.username.toUpperCase()}</span>
                   </button>
-                  <button onClick={logout} className="font-display text-[14px] font-bold uppercase tracking-widest text-slate-400 hover:text-white">
+                  <button onClick={logout} className="font-pixel text-[9px] uppercase tracking-widest text-slate-400 hover:text-white">
                     Sign out
                   </button>
                 </>
               ) : (
                 <>
-                  <button onClick={() => go({ name: "profile", mode: "login" })} className="font-display text-[14px] font-bold uppercase tracking-widest text-slate-300 hover:text-white">
+                  <button onClick={() => go({ name: "profile", mode: "login" })} className="font-pixel text-[9px] uppercase tracking-widest text-slate-300 hover:text-white">
                     Sign in
                   </button>
-                  <button onClick={() => go({ name: "profile", mode: "register" })} className="px-btn primary !py-2 !text-[13px]">
+                  <button onClick={() => go({ name: "profile", mode: "register" })} className="px-btn primary !py-2 !text-[9px]">
                     Create account
                   </button>
                 </>

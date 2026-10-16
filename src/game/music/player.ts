@@ -118,6 +118,10 @@ class MusicPlayer {
     if (this.el) return this.el;
     const el = new Audio();
     el.preload = "auto";
+    // Kept in the document (hidden) so browser media controls and dev tools can see it.
+    el.setAttribute("data-pixelruggas-music", "");
+    el.style.display = "none";
+    if (typeof document !== "undefined") document.body.appendChild(el);
     this.el = el;
     el.addEventListener("play", () => this.emit());
     el.addEventListener("pause", () => this.emit());

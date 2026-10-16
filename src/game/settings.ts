@@ -16,8 +16,8 @@ export const DEFAULT_SETTINGS: GameSettings = {
   musicVolume: 0.6,
   sfxVolume: 0.8,
   quality: "high",
-  matchMusic: "quiet",
-  smooth: true,
+  matchMusic: "off",
+  smooth: false,
   shuffle: false,
 };
 

@@ -31,11 +31,11 @@ export default function MatchView({ config, stadium, competition, bindings, onFi
   const finishRef = useRef(onFinish);
   finishRef.current = onFinish;
 
-  // Songs keep playing quietly (or go silent) while a match is on – see Settings → Music.
+  // Music stops while the match is live and comes back whenever the pause menu is open.
   useEffect(() => {
-    music.setContext("match");
-    return () => music.setContext("menu");
-  }, []);
+    music.setContext(paused ? "menu" : "match");
+  }, [paused]);
+  useEffect(() => () => music.setContext("menu"), []);
 
   useEffect(() => {
     const canvas = canvasRef.current;

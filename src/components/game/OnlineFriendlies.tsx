@@ -6,6 +6,7 @@ import { IDLE_INPUT, InputManager } from "@/game/input";
 import { getStadium, getTeam, pickKits, STADIUMS, TEAMS } from "@/game/data";
 import { RugbyEngine, type NetworkMatchState } from "@/game/engine";
 import { GameRuntime, loadPixelFonts } from "@/game/runtime";
+import { music } from "@/game/music/player";
 import { LIVE_FRAME, Renderer, VIEW_H, VIEW_W } from "@/game/render";
 import type { InputFrame, MatchConfig, MatchPlayerOverride, MatchResult, TeamData } from "@/game/types";
 import type { SessionUser } from "@/lib/auth";
@@ -261,6 +262,12 @@ export function OnlineMatchRoom({ id, bindings, go }: { id: number; bindings: Bi
 }
 
 function OnlineLiveMatch({ match, bindings, go }: { match: OnlineMatch; bindings: Bindings; go: (s: Screen) => void }) {
+  // Online matches are live, so the soundtrack stops until the player leaves.
+  useEffect(() => {
+    music.setContext("match");
+    return () => music.setContext("menu");
+  }, []);
+
   return match.role === "host" ? <OnlineHost match={match} bindings={bindings} go={go} /> : <OnlineGuest match={match} bindings={bindings} go={go} />;
 }
 
