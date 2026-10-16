@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { ultimateClubs } from "@/db/schema";
 import { getCurrentUser } from "@/lib/auth";
 import { dbErrorResponse } from "@/lib/db-status";
-import { claimChallenge, currentLeagueMatch, hydrateUltimateClubState, isValidClubState, openPack, quickSell, recordLeagueResult, recordUltimateResult, saveSquad, startCup, type PackId, type UltimateClubState } from "@/lib/ultimate";
+import { claimChallenge, currentLeagueMatch, hydrateUltimateClubState, isValidClubState, openPack, quickSell, quickSellDuplicates, recordLeagueResult, recordUltimateResult, saveSquad, startCup, type PackId, type UltimateClubState } from "@/lib/ultimate";
 import type { MatchResult } from "@/game/types";
 
 export const dynamic = "force-dynamic";
@@ -39,7 +39,7 @@ export async function POST(req: Request, ctx: Ctx) {
   if (!user) return NextResponse.json({ error: "Sign in to manage Ultimate Team." }, { status: 401 });
   const { id } = await ctx.params;
   const body = (await req.json().catch(() => null)) as {
-    action?: "open-pack" | "quick-sell" | "save-squad" | "claim-challenge" | "start-cup" | "record-match" | "league-result";
+    action?: "open-pack" | "quick-sell" | "quick-sell-duplicates" | "save-squad" | "claim-challenge" | "start-cup" | "record-match" | "league-result";
     packId?: PackId;
     cardIds?: string[];
     lineup?: string[];
@@ -62,6 +62,11 @@ export async function POST(req: Request, ctx: Ctx) {
       const out = quickSell(state, Array.isArray(body.cardIds) ? body.cardIds : []);
       if (out.error) return NextResponse.json({ error: out.error }, { status: 400 });
       state = out.state; extra = { coinsEarned: out.coinsEarned };
+    } else if (body.action === "quick-sell-duplicates") {
+      const out = quickSellDuplicates(state);
+      if (out.error) return NextResponse.json({ error: out.error }, { status: 400 });
+      state = out.state;
+      extra = { coinsEarned: out.coinsEarned, count: out.count };
     } else if (body.action === "save-squad") {
       const out = saveSquad(state, Array.isArray(body.lineup) ? body.lineup : [], Array.isArray(body.bench) ? body.bench : []);
       if (out.error) return NextResponse.json({ error: out.error }, { status: 400 });

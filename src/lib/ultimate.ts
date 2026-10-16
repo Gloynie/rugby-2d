@@ -422,6 +422,31 @@ export function quickSell(state: UltimateClubState, ids: string[]): { state: Ult
   return { state: next, coinsEarned };
 }
 
+/** Odds table per pack so the player can see what they can pull. */
+export function packOdds(packId: PackId): { band: string; chance: string }[] {
+  switch (packId) {
+    case "bronze": return [{ band: "48-63", chance: "62%" }, { band: "64-69", chance: "30%" }, { band: "70+", chance: "8%" }];
+    case "silver": return [{ band: "60-69", chance: "58%" }, { band: "70-77", chance: "34%" }, { band: "78+", chance: "8%" }];
+    case "gold": return [{ band: "70-74", chance: "44%" }, { band: "75-79", chance: "38%" }, { band: "80+", chance: "12%" }, { band: "85+ guaranteed", chance: "100%" }];
+    case "elite": return [{ band: "78-83", chance: "40%" }, { band: "84-88", chance: "40%" }, { band: "89+", chance: "12%" }, { band: "84+ guaranteed", chance: "100%" }];
+  }
+}
+
+/** Sell every duplicate of a card the player already owns (protected cards are never sold). */
+export function quickSellDuplicates(state: UltimateClubState): { state: UltimateClubState; coinsEarned: number; count: number; error?: string } {
+  const protectedIds = new Set([...state.lineup, ...state.bench]);
+  const seen = new Set<string>();
+  const toSell: string[] = [];
+  for (const card of state.cards) {
+    if (protectedIds.has(card.instanceId)) continue;
+    if (seen.has(card.catalogueId)) toSell.push(card.instanceId);
+    else seen.add(card.catalogueId);
+  }
+  if (!toSell.length) return { state, coinsEarned: 0, count: 0, error: "No duplicate cards outside your matchday 23." };
+  const out = quickSell(state, toSell);
+  return { state: out.state, coinsEarned: out.coinsEarned ?? 0, count: toSell.length };
+}
+
 export function saveSquad(state: UltimateClubState, lineup: string[], bench: string[]): { state: UltimateClubState; error?: string } {
   const all = [...lineup, ...bench];
   if (lineup.length !== 15 || bench.length !== 8 || new Set(all).size !== 23) return { state, error: "Choose exactly 15 starters and 8 bench players, with no duplicates." };

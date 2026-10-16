@@ -7,7 +7,7 @@ import type { Stadium, TeamData } from "@/game/types";
 
 export function Kicker({ children, color, className = "" }: { children: ReactNode; color?: string; className?: string }) {
   return (
-    <p className={`font-pixel text-[9px] uppercase tracking-[0.25em] ${className}`} style={{ color: color ?? "#facc15" }}>
+    <p className={`font-display text-[13px] font-bold uppercase tracking-[0.28em] ${className}`} style={{ color: color ?? "#facc15" }}>
       {children}
     </p>
   );
@@ -15,7 +15,7 @@ export function Kicker({ children, color, className = "" }: { children: ReactNod
 
 export function Title({ children, className = "" }: { children: ReactNode; className?: string }) {
   return (
-    <h1 className={`font-pixel text-lg uppercase leading-relaxed drop-shadow-[3px_3px_0_#000] md:text-2xl ${className}`}>{children}</h1>
+    <h1 className={`font-display text-3xl font-bold uppercase leading-tight tracking-wide drop-shadow-[0_2px_8px_rgba(0,0,0,0.6)] md:text-4xl ${className}`}>{children}</h1>
   );
 }
 

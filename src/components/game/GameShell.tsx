@@ -3,10 +3,16 @@
 import { useCallback, useEffect, useState } from "react";
 import { DEFAULT_BINDINGS, loadBindings, saveBindings, type Bindings } from "@/game/controls";
 import { findTeam } from "@/game/data";
+import { music } from "@/game/music/player";
+import { initSettings } from "@/game/settings";
 import type { SessionUser } from "@/lib/auth";
 import CompetitionsScreen, { HubScreen } from "./Competitions";
 import ControlsScreen from "./ControlsScreen";
 import HowToScreen from "./HowTo";
+import SettingsScreen from "./SettingsScreen";
+import MusicScreen from "./MusicScreen";
+import NowPlaying from "./NowPlaying";
+import GameMark from "./GameMark";
 import CareerStart from "./CareerStart";
 import CareerHub from "./CareerHub";
 import CareerMatch from "./CareerMatch";
@@ -37,7 +43,9 @@ export type Screen =
   | { name: "player-career-hub"; id: number }
   | { name: "online" }
   | { name: "online-match"; id: number }
-  | { name: "ultimate" };
+  | { name: "ultimate" }
+  | { name: "settings" }
+  | { name: "music" };
 
 const TABS: { label: string; screen: Screen }[] = [
   { label: "Home", screen: { name: "menu" } },
@@ -45,6 +53,7 @@ const TABS: { label: string; screen: Screen }[] = [
   { label: "Compete", screen: { name: "competitions" } },
   { label: "Squads", screen: { name: "squads" } },
   { label: "Controls", screen: { name: "controls" } },
+  { label: "Settings", screen: { name: "settings" } },
   { label: "Ultimate", screen: { name: "ultimate" } },
   { label: "Online", screen: { name: "online" } },
 ];
@@ -62,6 +71,11 @@ export default function GameShell({ initialUser, initialScreen }: { initialUser:
       .then((r) => r.json())
       .then((d: { db?: boolean }) => setOffline(d.db === false))
       .catch(() => setOffline(true));
+  }, []);
+
+  useEffect(() => {
+    initSettings();
+    void music.init();
   }, []);
 
   useEffect(() => {
@@ -112,10 +126,9 @@ export default function GameShell({ initialUser, initialScreen }: { initialUser:
       )}
       <div className="relative z-10 flex h-full flex-col">
         {!inMatch && (
-          <header className="flex items-center gap-6 px-6 pt-4 pb-2 md:px-10">
+          <header className="flex items-center gap-6 px-6 pb-2 pt-3 md:px-10">
             <button onClick={back} className="flex items-center gap-3 transition hover:brightness-125" aria-label="Return to PixelRuggas home">
-              <span className="font-pixel grid h-9 w-9 place-items-center border-2 border-black bg-yellow-400 text-sm text-black shadow-[3px_3px_0_#000]">R</span>
-              <span className="font-pixel text-sm tracking-[0.2em] text-white drop-shadow-[2px_2px_0_#000] md:text-base">PIXELRUGGAS</span>
+              <GameMark size={38} />
             </button>
             <nav className="hidden items-center gap-1 md:flex">
               {TABS.map((t) => {
@@ -124,7 +137,7 @@ export default function GameShell({ initialUser, initialScreen }: { initialUser:
                   <button
                     key={t.label}
                     onClick={() => go(t.screen)}
-                    className={`font-pixel border-b-2 px-3 py-2 text-[10px] uppercase tracking-[0.2em] transition ${
+                    className={`font-display border-b-2 px-3 py-2 text-[15px] font-bold uppercase tracking-[0.18em] transition ${
                       active ? "border-yellow-400 text-yellow-400" : "border-transparent text-slate-300 hover:text-white"
                     }`}
                   >
@@ -142,18 +155,18 @@ export default function GameShell({ initialUser, initialScreen }: { initialUser:
                     ) : (
                       <span className="font-pixel grid h-7 w-7 place-items-center bg-yellow-400 text-[9px] text-black">{user.username.slice(0, 2).toUpperCase()}</span>
                     )}
-                    <span className="font-pixel text-[10px]">{user.username.toUpperCase()}</span>
+                    <span className="font-display text-[15px] font-bold tracking-wide">{user.username.toUpperCase()}</span>
                   </button>
-                  <button onClick={logout} className="font-pixel text-[9px] uppercase tracking-widest text-slate-400 hover:text-white">
+                  <button onClick={logout} className="font-display text-[14px] font-bold uppercase tracking-widest text-slate-400 hover:text-white">
                     Sign out
                   </button>
                 </>
               ) : (
                 <>
-                  <button onClick={() => go({ name: "profile", mode: "login" })} className="font-pixel text-[9px] uppercase tracking-widest text-slate-300 hover:text-white">
+                  <button onClick={() => go({ name: "profile", mode: "login" })} className="font-display text-[14px] font-bold uppercase tracking-widest text-slate-300 hover:text-white">
                     Sign in
                   </button>
-                  <button onClick={() => go({ name: "profile", mode: "register" })} className="px-btn primary !py-2 !text-[9px]">
+                  <button onClick={() => go({ name: "profile", mode: "register" })} className="px-btn primary !py-2 !text-[13px]">
                     Create account
                   </button>
                 </>
@@ -173,6 +186,8 @@ export default function GameShell({ initialUser, initialScreen }: { initialUser:
           {screen.name === "controls" && <ControlsScreen bindings={bindings} setBindings={setBindings} />}
           {screen.name === "profile" && <ProfileScreen user={user} setUser={setUser} initialMode={screen.mode} go={go} offline={offline} />}
           {screen.name === "howto" && <HowToScreen bindings={bindings} />}
+          {screen.name === "settings" && <SettingsScreen onBack={back} />}
+          {screen.name === "music" && <MusicScreen onBack={back} />}
            {screen.name === "career" && (user ? <CareerStart user={user} go={go} /> : <ProfileScreen user={user} setUser={setUser} initialMode="login" go={go} />)}
           {screen.name === "career-hub" && <CareerHub careerId={screen.id} go={go} />}
           {screen.name === "career-match" && <CareerMatch careerId={screen.id} fixtureId={screen.fixtureId} mode={screen.mode} bindings={bindings} go={go} />}
@@ -202,9 +217,9 @@ export default function GameShell({ initialUser, initialScreen }: { initialUser:
                 Guest mode · no database
               </span>
             )}
-            <span className="font-pixel ml-auto hidden text-[8px] uppercase tracking-widest text-slate-500 md:block">
-              PixelRuggas · pixel edition · 53 teams · 6 competitions · 19 stadiums
-            </span>
+            <div className="ml-auto hidden md:block">
+              <NowPlaying onOpen={() => go({ name: "music" })} />
+            </div>
           </footer>
         )}
       </div>

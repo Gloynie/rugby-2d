@@ -13,6 +13,8 @@ import {
   createAiOpponent,
   currentLeagueMatch,
   getSquadCards,
+  packOdds,
+  quickSellDuplicates,
   leagueTable,
   opponentToTeam,
   ultimateTeamData,
@@ -161,7 +163,7 @@ export default function UltimateTeam({ user, bindings, go, setInMatch }: { user:
       <Scroll className="pr-2">
         {tab === "club" && <ClubHome club={club} onTab={setTab} />}
         {tab === "squad" && <SquadTab club={club} busy={busy} onSave={async (lineup, bench) => { const data = await commit({ action: "save-squad", lineup, bench }); if (data) setNotice("Your matchday 23 is saved."); }} onSell={async (id) => { const data = await commit({ action: "quick-sell", cardIds: [id] }); if (data) { audio.playCoin(); setNotice(`Sold for +${data.coinsEarned ?? 0} funds.`); } }} />}
-        {tab === "packs" && <PackTab club={club} busy={busy} onOpen={async (packId) => { const data = await commit({ action: "open-pack", packId }); const cards = data?.packedCards as UltimateCard[] | undefined; if (cards) { audio.playPackOpen(); setPackCards(cards); setReveal(0); } }} onSell={async (id) => { const data = await commit({ action: "quick-sell", cardIds: [id] }); if (data) { audio.playCoin(); setNotice(`Sold for +${data.coinsEarned ?? 0} funds.`); } }} />}
+        {tab === "packs" && <PackTab club={club} busy={busy} onOpen={async (packId) => { const data = await commit({ action: "open-pack", packId }); const cards = data?.packedCards as UltimateCard[] | undefined; if (cards) { audio.playPackOpen(); if (cards.some((card) => card.ovr >= 84)) audio.playLegendary(); setPackCards(cards); setReveal(0); } }} onSell={async (id) => { const data = await commit({ action: "quick-sell", cardIds: [id] }); if (data) { audio.playCoin(); setNotice(`Sold for +${data.coinsEarned ?? 0} funds.`); } }} onSellDuplicates={async () => { const data = await commit({ action: "quick-sell-duplicates" }); if (data) { audio.playCoin(); setNotice(`Sold ${data.count ?? 0} duplicates for +${data.coinsEarned ?? 0} funds.`); } }} />}
         {tab === "challenges" && <Challenges club={club} busy={busy} onClaim={async (id) => { const data = await commit({ action: "claim-challenge", challengeId: id }); if (data) { audio.playCoin(); setNotice(`Challenge reward claimed: +${data.reward ?? 0} funds.`); } }} />}
         {tab === "season" && <SeasonTab club={club} busy={busy} onPlayNext={() => { const match = currentLeagueMatch(club); if (!match) return; const userHome = match.home === -1; const oppIndex = (match.home === -1 ? match.away : match.home) - 1; setBattle({ opponent: club.league!.opponents[oppIndex], mode: "league", userHome }); }} onOnline={async (username) => { const data = await inviteUltimate(clubId!, username); if (data.error) setError(data.error); else { setNotice(`Ultimate Team invite sent to ${data.recipient}. Open Online to track it.`); go({ name: "online" }); } }} />}
       </Scroll>
@@ -370,31 +372,49 @@ function SquadTab({ club, busy, onSave, onSell }: { club: UltimateClubState; bus
   );
 }
 
-function PackTab({ club, busy, onOpen, onSell }: { club: UltimateClubState; busy: boolean; onOpen: (id: PackId) => Promise<void>; onSell: (id: string) => Promise<void> }) {
+function PackTab({ club, busy, onOpen, onSell, onSellDuplicates }: { club: UltimateClubState; busy: boolean; onOpen: (id: PackId) => Promise<void>; onSell: (id: string) => Promise<void>; onSellDuplicates: () => Promise<void> }) {
   const squadIds = new Set([...club.lineup, ...club.bench]);
   const available = club.cards.filter((card) => !squadIds.has(card.instanceId)).sort((a, b) => b.ovr - a.ovr);
+  const dupeCount = (() => {
+    const seen = new Set<string>();
+    let count = 0;
+    for (const card of available) { if (seen.has(card.catalogueId)) count++; else seen.add(card.catalogueId); }
+    return count;
+  })();
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <Panel className="p-6">
-        <Kicker>Pack shop</Kicker>
+        <Kicker>Pack shop · {club.packsOpened} opened</Kicker>
         <p className="mt-2 text-lg text-slate-300">Open packs using club funds. Any 80+ pull gets a full walkout reveal.</p>
         <div className="mt-4 grid gap-3">
           {PACKS.map((pack) => (
-            <div key={pack.id} className="flex items-center justify-between rounded-lg border-2 p-4" style={{ borderColor: pack.color, background: `${pack.color}14` }}>
-              <div>
-                <p className="text-lg font-black" style={{ color: pack.color }}>{pack.name}</p>
-                <p className="text-base text-slate-300">{pack.description}</p>
+            <div key={pack.id} className="rounded-lg border-2 p-4" style={{ borderColor: pack.color, background: `${pack.color}14` }}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-lg font-black" style={{ color: pack.color }}>{pack.name}</p>
+                  <p className="text-base text-slate-300">{pack.description}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xl font-black text-yellow-300">{pack.cost.toLocaleString()} F</p>
+                  <Btn primary className="mt-2 !text-[10px]" disabled={busy || club.coins < pack.cost} onClick={() => void onOpen(pack.id)}>Open pack</Btn>
+                </div>
               </div>
-              <div className="text-right">
-                <p className="text-xl font-black text-yellow-300">{pack.cost.toLocaleString()} F</p>
-                <Btn primary className="mt-2 !text-[10px]" disabled={busy || club.coins < pack.cost} onClick={() => void onOpen(pack.id)}>Open pack</Btn>
+              <div className="mt-3 flex flex-wrap gap-2 border-t border-white/10 pt-2 text-sm text-slate-400">
+                {packOdds(pack.id).map((o) => (
+                  <span key={o.band} className="rounded border border-white/10 bg-black/30 px-2 py-0.5">
+                    <b className="text-slate-200">{o.band}</b> · {o.chance}
+                  </span>
+                ))}
               </div>
             </div>
           ))}
         </div>
       </Panel>
       <Panel className="p-6">
-        <Kicker>Quick sell · {available.length} available</Kicker>
+        <div className="flex items-center justify-between">
+          <Kicker>Quick sell · {available.length} available</Kicker>
+          {dupeCount > 0 && <Btn className="!py-2 !text-[9px]" disabled={busy} onClick={() => void onSellDuplicates()}>Sell {dupeCount} duplicates</Btn>}
+        </div>
         <p className="mt-2 text-base text-slate-300">Values scale with OVR. Matchday 23 players are protected and never appear here.</p>
         <div className="mt-3 grid max-h-[560px] grid-cols-2 gap-2 overflow-y-auto pr-1 scroll">
           {available.map((card) => <CardMini key={card.instanceId} card={card} onSell={() => void onSell(card.instanceId)} />)}

@@ -4,6 +4,7 @@ import {
   ANCHOR_X, FOOT_Y, LIE_S, SPR_H, SPR_W, hashStr, shade, spriteFactory, teamLooks,
   type Look, type Pose, type View,
 } from "./sprites";
+import { currentSettings } from "./settings";
 import type { Stadium, TeamIndex, Vec2 } from "./types";
 
 export const VIEW_W = 1280;
@@ -94,7 +95,7 @@ function makeCrowdTile(s: Stadium, frame: number): HTMLCanvasElement {
     seed = (seed * 1103515245 + 12345) & 0x7fffffff;
     return seed / 0x7fffffff;
   };
-  const cols = [s.accent, "#e5e7eb", "#111827", "#6b7280", s.accent, "#f3f4f6", "#374151", "#b91c1c", "#1d4ed8", "#facc15"];
+  const cols = s.crowdColours && s.crowdColours.length ? [...s.crowdColours] : [s.accent, "#e5e7eb", "#111827", "#6b7280", s.accent, "#f3f4f6", "#374151", "#b91c1c", "#1d4ed8", "#facc15"];
   for (let y = 0; y < 32; y += 4) {
     for (let x = 0; x < 32; x += 3) {
       const skip = rnd() < 0.12;
@@ -202,6 +203,8 @@ export class Renderer {
       }
       this.phase = engine.players.map(() => Math.random() * 6);
     }
+    // Distinct sponsor names around each real venue's hoardings.
+    this.stadiumBrand = this.brandsFor(stadium);
     for (const f of [0, 1]) {
       const pat = b.createPattern(makeCrowdTile(stadium, f), "repeat");
       if (pat) this.crowd.push(pat);
@@ -446,7 +449,9 @@ export class Renderer {
 
   private blit(): void {
     const c = this.ctx;
-    c.imageSmoothingEnabled = false;
+    const soft = currentSettings().smooth;
+    c.imageSmoothingEnabled = soft;
+    if (soft) c.imageSmoothingQuality = "high";
     c.clearRect(0, 0, c.canvas.width, c.canvas.height);
     c.drawImage(this.buf, 0, 0, c.canvas.width, c.canvas.height);
   }
@@ -857,18 +862,28 @@ export class Renderer {
     const segment = Math.max(9, this.sw(9));
     const left = this.sx(-4.6), right = this.sx(L + 4.6);
     const top = this.sy(-4.6), bottom = this.sy(W + 4.6);
+    const boardDark = this.lum(s.accent) > 0.6 ? "#111827" : "#ffffff";
+    const boardPairs: [string, string][] = this.zoom >= 2
+      ? [[s.accent, boardDark], [boardDark, s.accent], ["#111827", "#ffffff"], [s.accent, boardDark]]
+      : [[s.accent, "#f8fafc"], ["#f8fafc", s.accent]];
     let i = 0;
     for (let x = left; x < right; x += segment, i++) {
-      b.fillStyle = i % 2 ? s.accent : "#f8fafc";
-      b.fillRect(x, top, Math.min(segment, right - x), board);
-      b.fillStyle = i % 2 ? "#f8fafc" : s.accent;
-      b.fillRect(x, bottom - board, Math.min(segment, right - x), board);
+      const [bg, fg] = boardPairs[i % boardPairs.length];
+      const segW = Math.min(segment, right - x);
+      b.fillStyle = bg;
+      b.fillRect(x, top, segW, board);
+      b.fillRect(x, bottom - board, segW, board);
+      const label = this.stadiumBrand[i % this.stadiumBrand.length];
+      if (this.zoom >= 2 && label && segW > this.measure(label, 5) + 6) {
+        this.text(label, x + segW / 2, this.sy(-4.6) + (board - 6) / 2, { align: "center", size: 5, color: fg, shadow: false });
+        this.text(label, x + segW / 2, this.sy(W + 4.6) - board + (board - 6) / 2, { align: "center", size: 5, color: fg, shadow: false });
+      }
     }
     i = 0;
     for (let y = top; y < bottom; y += segment, i++) {
-      b.fillStyle = i % 2 ? "#f8fafc" : s.accent;
+      const [bg, fg] = boardPairs[i % boardPairs.length];
+      b.fillStyle = bg;
       b.fillRect(left, y, board, Math.min(segment, bottom - y));
-      b.fillStyle = i % 2 ? s.accent : "#f8fafc";
       b.fillRect(right - board, y, board, Math.min(segment, bottom - y));
     }
     if (flash > 0.05) {
@@ -1807,6 +1822,41 @@ export class Renderer {
     this.b.beginPath();
     this.b.ellipse(x, y, Math.max(0.5, rx), Math.max(0.5, ry), 0, 0, Math.PI * 2);
     this.b.fill();
+  }
+
+  private lum(hex: string): number {
+    const h = hex.replace("#", "");
+    const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+    return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  }
+
+  private stadiumBrand: string[] = [];
+
+  /** Realistic sponsor mix used on the hoardings of each ground. */
+  private brandsFor(s: Stadium): string[] {
+    const shared = ["PIXELRUGGAS", "RUGBY 2D"];
+    const byVenue: Partial<Record<string, string[]>> = {
+      twickenham: ["ALLIANZ", "GUINNESS", "O2", shared[0]],
+      stadedefrance: ["ACCOR", "EDF", "SFR", shared[0]],
+      aviva: ["AVIVA", "GUINNESS", shared[1], shared[0]],
+      principality: ["PRINCIPALITY", "GUINNESS", shared[0], shared[1]],
+      murrayfield: ["SCOTTISH GAS", "URC", shared[0], shared[1]],
+      olimpico: ["TIM", "IMMOBILIARE.IT", shared[0], shared[1]],
+      edenpark: ["EDEN PARK", "TAB", shared[1], shared[0]],
+      ellispark: ["EMIRATES", "HOLLYWOODBETS", shared[0], shared[1]],
+      accor: ["ACCOR", "TOYOTA", shared[1], shared[0]],
+      amalfitani: ["VÉLEZ", "ADIDAS", shared[0], shared[1]],
+      suncorp: ["SUNCORP", "SUNCORP STADIUM", shared[1], shared[0]],
+      loftus: ["LOFTUS", "VODACOM", shared[0], shared[1]],
+      dhl: ["DHL", "RED BULL", shared[1], shared[0]],
+      thomond: ["THOMOND PARK", "GUINNESS", shared[0], shared[1]],
+      kingsholm: ["KINGSHOLM", "HART PURY", shared[1], shared[0]],
+      franklins: ["FRANKLIN'S", "LML", shared[0], shared[1]],
+      sandypark: ["SANDY PARK", "EXETER", shared[1], shared[0]],
+      forsythbarr: ["FORSYTH BARR", "DUNEDIN", shared[0], shared[1]],
+      velodrome: ["VÉLODROME", "ORANGE", shared[1], shared[0]],
+    };
+    return byVenue[s.id] ?? shared;
   }
 
   private drawLetterbox(k: number): void {

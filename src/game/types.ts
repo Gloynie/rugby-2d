@@ -64,6 +64,8 @@ export interface Stadium {
   landmark?: StadiumLandmark;
   /** Optional real-world roof/stand sponsor lettering rendered in pixel form. */
   roofBrand?: string;
+  /** Crowd palette: mix of home colours used for pixel supporters. */
+  crowdColours?: string[];
 }
 
 export interface Attributes {

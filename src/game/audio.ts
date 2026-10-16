@@ -24,10 +24,45 @@ function getCtx(): AudioContext | null {
   return ctx;
 }
 
+export interface AudioSettings {
+  musicVolume: number;
+  sfxVolume: number;
+}
+
+let audioSettings: AudioSettings = { musicVolume: 0.5, sfxVolume: 0.8 };
+let musicGain: GainNode | null = null;
+let sfxGain: GainNode | null = null;
+
+/** Called once at boot and whenever the player changes volume in Settings. */
+export function applyAudioSettings(settings: AudioSettings): void {
+  audioSettings = settings;
+  const c = getCtx();
+  if (!c || !masterGain) return;
+  if (!musicGain) {
+    musicGain = c.createGain();
+    musicGain.connect(masterGain);
+  }
+  if (!sfxGain) {
+    sfxGain = c.createGain();
+    sfxGain.connect(masterGain);
+  }
+  musicGain.gain.value = settings.musicVolume;
+  sfxGain.gain.value = settings.sfxVolume;
+  masterGain.gain.value = enabled ? 0.9 : 0;
+}
+
+/** Music should connect to the music bus, sound effects to the sfx bus. */
+export function musicBus(): GainNode | null {
+  return musicGain ?? masterGain;
+}
+export function sfxBus(): GainNode | null {
+  return sfxGain ?? masterGain;
+}
+
 export function setEnabled(v: boolean): void {
   enabled = v;
   if (!v) stopAll();
-  if (masterGain && ctx) masterGain.gain.value = v ? 0.35 : 0;
+  if (masterGain && ctx) masterGain.gain.value = v ? 0.9 : 0;
 }
 
 export function isEnabled(): boolean {
@@ -223,7 +258,7 @@ export function playAnthemCue(team: 0 | 1): void {
 export function startMenuMusic(): void {
   const c = getCtx();
   if (!c || !masterGain || !enabled || menuLoop) return;
-  const mg = masterGain!;
+  const mg = musicBus() ?? masterGain!;
   const bpm = 84;
   const beat = 60 / bpm;
   const bar = beat * 4;
@@ -338,7 +373,7 @@ export function playBlip(): void {
   const o = c.createOscillator(); const g = c.createGain();
   o.type = "square"; o.frequency.setValueAtTime(660, t); o.frequency.setValueAtTime(880, t + 0.04);
   g.gain.setValueAtTime(0.06, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
-  o.connect(g); g.connect(masterGain!); o.start(t); o.stop(t + 0.1);
+  o.connect(g); g.connect(sfxBus() ?? masterGain!); o.start(t); o.stop(t + 0.1);
 }
 
 /** Pass whoosh. */
@@ -348,7 +383,7 @@ export function playPass(): void {
   const src = c.createBufferSource(); src.buffer = noiseBuffer(c, 0.12, 0.05);
   const bp = c.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.setValueAtTime(900, t); bp.frequency.exponentialRampToValueAtTime(2600, t + 0.1); bp.Q.value = 1.2;
   const g = c.createGain(); g.gain.setValueAtTime(0.14, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
-  src.connect(bp); bp.connect(g); g.connect(masterGain!); src.start(t);
+  src.connect(bp); bp.connect(g); g.connect(sfxBus() ?? masterGain!); src.start(t);
 }
 
 /** Kick thump + whoosh. */
@@ -358,11 +393,11 @@ export function playKick(): void {
   const o = c.createOscillator(); const g = c.createGain();
   o.type = "sine"; o.frequency.setValueAtTime(140, t); o.frequency.exponentialRampToValueAtTime(50, t + 0.18);
   g.gain.setValueAtTime(0.28, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
-  o.connect(g); g.connect(masterGain!); o.start(t); o.stop(t + 0.22);
+  o.connect(g); g.connect(sfxBus() ?? masterGain!); o.start(t); o.stop(t + 0.22);
   const src = c.createBufferSource(); src.buffer = noiseBuffer(c, 0.16, 0.06);
   const bp = c.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.setValueAtTime(600, t); bp.frequency.exponentialRampToValueAtTime(3200, t + 0.14);
   const g2 = c.createGain(); g2.gain.setValueAtTime(0.12, t); g2.gain.exponentialRampToValueAtTime(0.001, t + 0.16);
-  src.connect(bp); bp.connect(g2); g2.connect(masterGain!); src.start(t);
+  src.connect(bp); bp.connect(g2); g2.connect(sfxBus() ?? masterGain!); src.start(t);
 }
 
 /** Crowd swell for line breaks / near misses. */
@@ -372,7 +407,7 @@ export function playCrowdSwell(): void {
   const src = c.createBufferSource(); src.buffer = noiseBuffer(c, 0.9, 0.4);
   const bp = c.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 1200; bp.Q.value = 0.6;
   const g = c.createGain(); g.gain.setValueAtTime(0.02, t); g.gain.linearRampToValueAtTime(0.16, t + 0.25); g.gain.linearRampToValueAtTime(0, t + 0.9);
-  src.connect(bp); bp.connect(g); g.connect(masterGain!); src.start(t);
+  src.connect(bp); bp.connect(g); g.connect(sfxBus() ?? masterGain!); src.start(t);
 }
 
 /** Pack opening whoosh + shimmer. */
@@ -382,13 +417,13 @@ export function playPackOpen(): void {
   const src = c.createBufferSource(); src.buffer = noiseBuffer(c, 0.4, 0.15);
   const bp = c.createBiquadFilter(); bp.type = "highpass"; bp.frequency.setValueAtTime(400, t); bp.frequency.exponentialRampToValueAtTime(5000, t + 0.35);
   const g = c.createGain(); g.gain.setValueAtTime(0.1, t); g.gain.linearRampToValueAtTime(0.2, t + 0.2); g.gain.linearRampToValueAtTime(0, t + 0.4);
-  src.connect(bp); bp.connect(g); g.connect(masterGain!); src.start(t);
+  src.connect(bp); bp.connect(g); g.connect(sfxBus() ?? masterGain!); src.start(t);
   [880, 1108.7, 1318.5].forEach((f, i) => {
     const o = c.createOscillator(); const g2 = c.createGain();
     o.type = "sine"; o.frequency.value = f;
     const st = t + 0.25 + i * 0.07;
     g2.gain.setValueAtTime(0, st); g2.gain.linearRampToValueAtTime(0.06, st + 0.02); g2.gain.exponentialRampToValueAtTime(0.001, st + 0.3);
-    o.connect(g2); g2.connect(masterGain!); o.start(st); o.stop(st + 0.32);
+    o.connect(g2); g2.connect(sfxBus() ?? masterGain!); o.start(st); o.stop(st + 0.32);
   });
 }
 
@@ -401,7 +436,7 @@ export function playCoin(): void {
     o.type = "square"; o.frequency.value = f;
     const st = t + i * 0.08;
     g.gain.setValueAtTime(0.05, st); g.gain.exponentialRampToValueAtTime(0.001, st + 0.18);
-    o.connect(g); g.connect(masterGain!); o.start(st); o.stop(st + 0.2);
+    o.connect(g); g.connect(sfxBus() ?? masterGain!); o.start(st); o.stop(st + 0.2);
   });
 }
 
@@ -415,7 +450,7 @@ export function playFanfare(): void {
     const o = c.createOscillator(); const g = c.createGain();
     o.type = "triangle"; o.frequency.value = f;
     g.gain.setValueAtTime(0, st); g.gain.linearRampToValueAtTime(0.12, st + 0.03); g.gain.linearRampToValueAtTime(0, st + (i === notes.length - 1 ? 0.6 : 0.2));
-    o.connect(g); g.connect(masterGain!); o.start(st); o.stop(st + 0.7);
+    o.connect(g); g.connect(sfxBus() ?? masterGain!); o.start(st); o.stop(st + 0.7);
   });
 }
 
@@ -428,6 +463,104 @@ export function playWhistleShort(): void {
     o.type = "sine"; o.frequency.value = 2400;
     const st = t + i * 0.14;
     g.gain.setValueAtTime(0, st); g.gain.linearRampToValueAtTime(0.22, st + 0.02); g.gain.linearRampToValueAtTime(0, st + 0.11);
-    o.connect(g); g.connect(masterGain!); o.start(st); o.stop(st + 0.13);
+    o.connect(g); g.connect(sfxBus() ?? masterGain!); o.start(st); o.stop(st + 0.13);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Update pass 2: more match & UI sounds
+// ---------------------------------------------------------------------------
+
+/** Crowd boo (missed chance / bad decision). */
+export function playBoo(): void {
+  const c = getCtx(); if (!c || !masterGain || !enabled) return;
+  const t = c.currentTime;
+  const o = c.createOscillator(); const g = c.createGain();
+  o.type = "sawtooth"; o.frequency.setValueAtTime(130, t); o.frequency.exponentialRampToValueAtTime(70, t + 0.5);
+  g.gain.setValueAtTime(0.08, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
+  o.connect(g); g.connect(sfxBus() ?? masterGain!); o.start(t); o.stop(t + 0.55);
+}
+
+/** Half/full-time whistle (long single blast). */
+export function playWhistleLong(): void {
+  const c = getCtx(); if (!c || !masterGain || !enabled) return;
+  const t = c.currentTime;
+  const o = c.createOscillator(); const g = c.createGain();
+  o.type = "sine"; o.frequency.value = 2400;
+  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(0.25, t + 0.05);
+  g.gain.setValueAtTime(0.25, t + 0.7); g.gain.linearRampToValueAtTime(0, t + 0.85);
+  o.connect(g); g.connect(sfxBus() ?? masterGain!); o.start(t); o.stop(t + 0.9);
+}
+
+/** Scrum engage crunch (pack impact). */
+export function playScrumHit(): void {
+  const c = getCtx(); if (!c || !masterGain || !enabled) return;
+  const t = c.currentTime;
+  const o = c.createOscillator(); const g = c.createGain();
+  o.type = "square"; o.frequency.setValueAtTime(90, t); o.frequency.exponentialRampToValueAtTime(50, t + 0.12);
+  g.gain.setValueAtTime(0.18, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.14);
+  o.connect(g); g.connect(sfxBus() ?? masterGain!); o.start(t); o.stop(t + 0.16);
+  const src = c.createBufferSource(); src.buffer = noiseBuffer(c, 0.1, 0.03);
+  const bp = c.createBiquadFilter(); bp.type = "lowpass"; bp.frequency.value = 400;
+  const g2 = c.createGain(); g2.gain.setValueAtTime(0.2, t); g2.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+  src.connect(bp); bp.connect(g2); g2.connect(sfxBus() ?? masterGain!); src.start(t);
+}
+
+/** Lineout whoosh + ball tap. */
+export function playLineout(): void {
+  const c = getCtx(); if (!c || !masterGain || !enabled) return;
+  const t = c.currentTime;
+  const src = c.createBufferSource(); src.buffer = noiseBuffer(c, 0.3, 0.12);
+  const bp = c.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.setValueAtTime(500, t); bp.frequency.exponentialRampToValueAtTime(1800, t + 0.25);
+  const g = c.createGain(); g.gain.setValueAtTime(0.1, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+  src.connect(bp); bp.connect(g); g.connect(sfxBus() ?? masterGain!); src.start(t);
+}
+
+/** Player upgraded / attribute improved. */
+export function playUpgrade(): void {
+  const c = getCtx(); if (!c || !masterGain || !enabled) return;
+  const t = c.currentTime;
+  [523.3, 659.3, 784, 1046.5].forEach((f, i) => {
+    const o = c.createOscillator(); const g = c.createGain();
+    o.type = "sine"; o.frequency.value = f;
+    const st = t + i * 0.05;
+    g.gain.setValueAtTime(0, st); g.gain.linearRampToValueAtTime(0.1, st + 0.02); g.gain.exponentialRampToValueAtTime(0.001, st + 0.22);
+    o.connect(g); g.connect(sfxBus() ?? masterGain!); o.start(st); o.stop(st + 0.25);
+  });
+}
+
+/** Legendary pack sting (80+ pull). */
+export function playLegendary(): void {
+  const c = getCtx(); if (!c || !masterGain || !enabled) return;
+  const t = c.currentTime;
+  [392, 523.3, 659.3, 784, 1046.5, 1318.5].forEach((f, i) => {
+    const o = c.createOscillator(); const g = c.createGain();
+    o.type = "triangle"; o.frequency.value = f;
+    const st = t + i * 0.08;
+    g.gain.setValueAtTime(0, st); g.gain.linearRampToValueAtTime(0.14, st + 0.02); g.gain.linearRampToValueAtTime(0, st + 0.35);
+    o.connect(g); g.connect(sfxBus() ?? masterGain!); o.start(st); o.stop(st + 0.4);
+  });
+}
+
+/** Substitution ping. */
+export function playSubPing(): void {
+  const c = getCtx(); if (!c || !masterGain || !enabled) return;
+  const t = c.currentTime;
+  [880, 1174.7].forEach((f, i) => {
+    const o = c.createOscillator(); const g = c.createGain();
+    o.type = "sine"; o.frequency.value = f;
+    const st = t + i * 0.06;
+    g.gain.setValueAtTime(0.07, st); g.gain.exponentialRampToValueAtTime(0.001, st + 0.15);
+    o.connect(g); g.connect(sfxBus() ?? masterGain!); o.start(st); o.stop(st + 0.18);
+  });
+}
+
+/** Menu hover tick (very quiet). */
+export function playHover(): void {
+  const c = getCtx(); if (!c || !masterGain || !enabled) return;
+  const t = c.currentTime;
+  const o = c.createOscillator(); const g = c.createGain();
+  o.type = "sine"; o.frequency.value = 1400;
+  g.gain.setValueAtTime(0.03, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+  o.connect(g); g.connect(sfxBus() ?? masterGain!); o.start(t); o.stop(t + 0.06);
 }

@@ -52,6 +52,7 @@ export class GameRuntime {
   private prevCeremonyCue = "";
   private prevFlight = "none";
   private prev22 = false;
+  private prevSubs = 0;
 
   constructor(private opts: RuntimeOptions) {
     this.engine = new RugbyEngine(opts.config);
@@ -122,9 +123,16 @@ export class GameRuntime {
     if (e.phase !== this.prevPhase) {
       if (e.phase === "tackle" && this.prevPhase === "play") audio.playTackle();
       if (e.phase === "penaltyChoice") audio.playWhistleShort();
-      if (e.phase === "scrum") audio.playWhistleShort();
+      if (e.phase === "scrum") audio.playScrumHit();
+      if (e.phase === "lineout") audio.playLineout();
+      if (e.phase === "halftime") audio.playWhistleLong();
+      if (e.phase === "fulltime") audio.playWhistleLong();
       this.prevPhase = e.phase;
     }
+    // Substitution ping
+    const totalSubs = e.players.filter((p) => p.hasBeenSubbedOff).length;
+    if (totalSubs > this.prevSubs) audio.playSubPing();
+    this.prevSubs = totalSubs;
     // Ball flight sounds
     if (e.ball.flight !== this.prevFlight) {
       if (e.ball.flight === "pass") audio.playPass();

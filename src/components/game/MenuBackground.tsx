@@ -5,7 +5,6 @@ import { COMPETITIONS, STADIUMS, getStadium, getTeam, pickKits } from "@/game/da
 import { GameRuntime } from "@/game/runtime";
 import { VIEW_H, VIEW_W } from "@/game/render";
 import { DEFAULT_BINDINGS } from "@/game/controls";
-import * as audio from "@/game/audio";
 
 function randomFixture() {
   const comp = COMPETITIONS[Math.floor(Math.random() * COMPETITIONS.length)];
@@ -19,22 +18,6 @@ function randomFixture() {
 /** Attract mode: an AI-vs-AI match with cinematic stadium fly-overs behind the menus. */
 export default function MenuBackground() {
   const ref = useRef<HTMLCanvasElement>(null);
-  useEffect(() => {
-    // Start menu music on first user interaction
-    const startMusic = () => {
-      audio.startMenuMusic();
-      window.removeEventListener("click", startMusic);
-      window.removeEventListener("keydown", startMusic);
-    };
-    window.addEventListener("click", startMusic);
-    window.addEventListener("keydown", startMusic);
-    return () => {
-      window.removeEventListener("click", startMusic);
-      window.removeEventListener("keydown", startMusic);
-      audio.stopMenuMusic();
-    };
-  }, []);
-
   useEffect(() => {
     const canvas = ref.current;
     if (!canvas) return;
@@ -69,5 +52,5 @@ export default function MenuBackground() {
       rt?.stop();
     };
   }, []);
-  return <canvas ref={ref} width={VIEW_W} height={VIEW_H} className="pixelated absolute inset-0 h-full w-full object-cover opacity-90" />;
+  return <canvas ref={ref} width={VIEW_W} height={VIEW_H} className="pixelated game-canvas absolute inset-0 h-full w-full object-cover opacity-90" />;
 }

@@ -4,7 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { ACTIONS, keyLabel, type Bindings } from "@/game/controls";
 import { VIEW_H, VIEW_W } from "@/game/render";
 import { GameRuntime } from "@/game/runtime";
+import { music } from "@/game/music/player";
 import type { MatchConfig, MatchResult, Stadium } from "@/game/types";
+import NowPlaying from "./NowPlaying";
 import { Btn, Kbd, Kicker, Panel } from "./ui";
 
 interface Props {
@@ -29,6 +31,12 @@ export default function MatchView({ config, stadium, competition, bindings, onFi
   const finishRef = useRef(onFinish);
   finishRef.current = onFinish;
 
+  // Songs keep playing quietly (or go silent) while a match is on – see Settings → Music.
+  useEffect(() => {
+    music.setContext("match");
+    return () => music.setContext("menu");
+  }, []);
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -52,7 +60,6 @@ export default function MatchView({ config, stadium, competition, bindings, onFi
     void rt.start();
     return () => {
       rt.stop();
-      import("@/game/audio").then((a) => a.stopMenuMusic());
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -96,7 +103,7 @@ export default function MatchView({ config, stadium, competition, bindings, onFi
         ref={canvasRef}
         width={VIEW_W}
         height={VIEW_H}
-        className="pixelated max-h-full max-w-full"
+        className="pixelated game-canvas max-h-full max-w-full"
         style={{ aspectRatio: `${VIEW_W} / ${VIEW_H}`, width: "100%", height: "auto" }}
       />
       {paused && (
@@ -125,6 +132,7 @@ export default function MatchView({ config, stadium, competition, bindings, onFi
 
                 <Btn onClick={() => setMenuView("controls")}>View Controls</Btn>
                 <Btn danger onClick={onQuit}>Quit to Menu</Btn>
+                <div className="mt-1 flex justify-center"><NowPlaying /></div>
                 <p className="mt-2 text-slate-400">
                   Press <Kbd>{keyLabel(bindings.pause)}</Kbd> to resume · <Kbd>{keyLabel(bindings.help)}</Kbd> toggles help
                 </p>

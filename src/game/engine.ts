@@ -1769,9 +1769,9 @@ export class RugbyEngine {
       this.scheduleRestart("dropout", other(c.team));
       return;
     }
-    if (f >= 109.6) {
+    if (f >= 109.2) {
       this.inGoalTimer += dt;
-      if (c.id !== this.controlled || this.inGoalTimer > 0.45) this.scoreTry(c);
+      if (c.id !== this.controlled || this.inGoalTimer > 0.35) this.scoreTry(c);
     } else {
       this.inGoalTimer = 0;
     }
@@ -2098,7 +2098,7 @@ export class RugbyEngine {
     this.ball.pos = { x: this.wx(team, fM), y: my, z: 0 };
     this.phase = "scrum";
     this.scrumInteractive = this.userTeam !== null;
-    this.phaseTimer = this.scrumInteractive ? 999 : 2.0;
+    this.phaseTimer = this.scrumInteractive ? 999 : 1.5;
     this.possession = team;
     this.say("SCRUM", this.scrumInteractive ? "MASH [SPACE] TO SHOVE!" : `${this.teamName(team)} put-in`, "#ffffff", 2.4);
     if (this.userTeam !== null) this.controlled = this.pl(this.userTeam, 9).id;
@@ -2562,6 +2562,15 @@ export class RugbyEngine {
     } else {
       throwTeam = b.lastTeam !== null ? other(b.lastTeam) : 0;
       this.say("Into touch", `Lineout to ${this.teamName(throwTeam)}`);
+    }
+    // 50:22 rule: kick from own 22 or beyond finds touch in opponent 22 -> throw-in to kicker's side.
+    if (b.kickTeam !== null) {
+      const kickFromF = this.fx(b.kickTeam, b.kickFromX);
+      const markF = this.fx(b.kickTeam, x);
+      if (kickFromF >= 32 && markF >= 88) {
+        throwTeam = b.kickTeam;
+        this.say("50:22!", `Throw-in to ${this.teamName(throwTeam)}`);
+      }
     }
     this.scheduleRestart("lineout", throwTeam, markX, side);
   }
