@@ -1,6 +1,7 @@
 import type { RugbyEngine } from "./engine";
 import { keyLabel, type Bindings } from "./controls";
 import type { FrameOptions, PlayerVisual, Renderer, Snapshot } from "./render";
+import { CameraShots } from "./camerashots";
 import type { Stadium, TeamIndex, Vec2 } from "./types";
 
 export type Scene = "intro" | "toss" | "tossChoice" | "live" | "try" | "replay" | "halftime" | "fulltime" | "scrum";
@@ -74,6 +75,9 @@ export class Director {
   }
 
   /** Record what the renderer drew this frame so we can replay it later. */
+  private replayLabel = "LAST PLAY";
+  setReplayLabel(label: string): void { this.replayLabel = label; }
+
   record(snap: Snapshot, dt: number): void {
     this.ringTime += dt;
     this.ring.push({ ...snap, t: this.ringTime });
@@ -221,9 +225,18 @@ export class Director {
         f.drawOverlay = (r) => this.drawTossChoice(r);
         break;
       }
-      case "live":
+      case "live": {
         f.stepEngine = true;
         f.zoom = 1;
+        if (!paused && (this.engine.phase === "whistle" || this.engine.phase === "halftime")) {
+          const t2 = this.t * 0.4;
+          f.drawOverlay = (r) => CameraShots.crowdPan(r, { x: 60, y: 35 }, t2);
+        }
+        if (!paused && (this.engine.phase === "lineout" || this.engine.phase === "scrum")) {
+          const t2 = this.t;
+          const existing = f.drawOverlay;
+          f.drawOverlay = (r) => { existing?.(r); CameraShots.crowdWave(r, t2); };
+        }
         if (this.engine.scrumInteractive && this.engine.phase === "scrum") {
           this.scene = "scrum";
           this.t = 0;
@@ -231,6 +244,7 @@ export class Director {
           this.scrumAi = 0;
         }
         break;
+      }
       case "scrum": {
         // Fast-click scrum contest: mash to shove; double the AI's push to win a penalty.
         f.frozen = true;
@@ -269,7 +283,10 @@ export class Director {
           f.camTarget = { x: scorer.pos.x, y: scorer.pos.y };
           f.celebrate = { team: scorer.team, pos: scorer.pos };
         }
-        f.drawOverlay = (r) => this.drawTry(r);
+        if (scorer) {
+          const teamColor = e.teams[scorer.team].color;
+          f.drawOverlay = (r) => { CameraShots.celebration(r, scorer.name, teamColor); };
+        } else f.drawOverlay = (r) => this.drawTry(r);
         if (this.t > 2.2 || (skip && !this.opts.attract)) this.startReplay();
         break;
       }
@@ -285,7 +302,11 @@ export class Director {
         f.hideHUD = true;
         f.letterbox = 1;
         f.frozen = true;
-        f.drawOverlay = (r) => this.drawReplay(r);
+        f.drawOverlay = (r) => {
+          const h = e.teams[0].data.short;
+          const a = e.teams[1].data.short;
+          CameraShots.replay(r, this.replayLabel ?? "LAST PLAY", h, a, e.score[0], e.score[1], e.gameMinute());
+        };
         if (this.replayT >= this.replayEnd || (skip && !this.opts.attract)) this.endReplay();
         break;
       }
@@ -322,6 +343,14 @@ export class Director {
       this.endReplay();
       return;
     }
+    const e = this.engine;
+    this.replayLabel =
+      e.phase === "try" ? "TRY REPLAY"
+      : e.phase === "penaltyChoice" ? "PENALTY SHOT"
+      : e.phase === "goalKick" ? "GOAL KICK"
+      : e.phase === "scrum" ? "SCRUM"
+      : e.phase === "lineout" ? "LINEOUT"
+      : "LAST PLAY";
     const end = this.ring[this.ring.length - 1].t;
     this.replayT = Math.max(this.ring[0].t, end - REPLAY_LENGTH);
     this.replayEnd = end;

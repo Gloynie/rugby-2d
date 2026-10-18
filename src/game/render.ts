@@ -157,6 +157,8 @@ export class Renderer {
   readonly bufH: number;
   private ctx: CanvasRenderingContext2D;
   private buf: HTMLCanvasElement;
+  /** Buffer 2D context exposed for cinematic overlays. Use the helpers when possible. */
+  drawBuffer: CanvasRenderingContext2D;
   private b: CanvasRenderingContext2D;
   private stadium: Stadium;
   private looks: [Look[], Look[]] = [[], []];
@@ -193,7 +195,7 @@ export class Renderer {
     this.buf.height = this.bufH;
     const b = this.buf.getContext("2d");
     if (!b) throw new Error("2d context unavailable");
-    this.b = b;
+    this.b = b; this.drawBuffer = b;
     b.imageSmoothingEnabled = false;
     if (engine) {
       for (const t of [0, 1] as TeamIndex[]) {

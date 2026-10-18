@@ -82,6 +82,11 @@ class MusicPlayer {
   getSnapshot = (): MusicSnapshot => this.snap;
   getServerSnapshot = (): MusicSnapshot => EMPTY;
 
+  /** Called by the first user gesture so the browser allows audio to play. */
+  unlock(): void { this.started = true; this.maybeAutoStart(); }
+  /** Returns a promise that resolves once the library scan is done. */
+  async onceReady(): Promise<void> { return this.init(); }
+
   // ---------------------------------------------------------------- setup
   init(): Promise<void> {
     if (typeof window === "undefined") return Promise.resolve();

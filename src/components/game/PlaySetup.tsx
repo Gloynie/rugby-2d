@@ -10,8 +10,9 @@ import type { Screen } from "./GameShell";
 import MatchView from "./MatchView";
 import MatchReport from "./MatchReport";
 import { Btn, Crest, Kbd, Kicker, Panel, PlayerSprite, StadiumThumb, Scroll, ScreenHeader, isLight } from "./ui";
+import Loader from "./Loader";
 
-type Step = "team" | "opponent" | "stadium" | "settings" | "match" | "result";
+type Step = "team" | "opponent" | "stadium" | "settings" | "loading" | "match" | "result";
 
 const HALF_OPTIONS = [
   { label: "2 min", value: 120 },
@@ -75,6 +76,12 @@ export default function PlaySetup({ user, bindings, tournamentId, go, setInMatch
     return () => setInMatch(false);
   }, [step, setInMatch]);
 
+  useEffect(() => {
+    if (step !== "loading") return;
+    const t = window.setTimeout(() => setStep("match"), 1500);
+    return () => window.clearTimeout(t);
+  }, [step]);
+
   const teams = useMemo(() => (filter === "all" ? TEAMS : (getCompetition(filter)?.teamIds.map(getTeam) ?? TEAMS)), [filter]);
   const kits = pickKits(home, away);
   const competitionName = tournament
@@ -114,6 +121,13 @@ export default function PlaySetup({ user, bindings, tournamentId, go, setInMatch
     }
   };
 
+  if (step === "loading") {
+    return (
+      <div className="fixed inset-0 z-40 bg-black">
+        <Loader label={`${home.name.toUpperCase()} v ${away.name.toUpperCase()} · ${stadium.name.toUpperCase()}`} steps={["SHARE TUNNEL", "LINE UP", "COIN TOSS", "KICK OFF"]} />
+      </div>
+    );
+  }
   if (step === "match" || step === "result") {
     return (
       <div className="fixed inset-0 z-40 bg-black">
@@ -159,7 +173,7 @@ export default function PlaySetup({ user, bindings, tournamentId, go, setInMatch
                 {tournament ? (
                   <Btn primary onClick={() => go({ name: "hub", id: tournament.id })}>Continue competition</Btn>
                 ) : (
-                  <Btn primary onClick={() => { setResult(null); setSaveMsg(null); setMatchNo((n) => n + 1); setStep("match"); }}>Play again</Btn>
+                  <Btn primary onClick={() => { setResult(null); setSaveMsg(null); setMatchNo((n) => n + 1); setStep("loading"); }}>Play again</Btn>
                 )}
                 {!tournament && <Btn onClick={() => { setResult(null); setSaveMsg(null); setStep("team"); }}>New match</Btn>}
                 <Btn onClick={() => go({ name: "menu" })}>Main menu</Btn>

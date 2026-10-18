@@ -13,6 +13,7 @@ import SettingsScreen from "./SettingsScreen";
 import MusicScreen from "./MusicScreen";
 import NowPlaying from "./NowPlaying";
 import GameMark from "./GameMark";
+import Loader, { Splash } from "./Loader";
 import CareerStart from "./CareerStart";
 import CareerHub from "./CareerHub";
 import CareerMatch from "./CareerMatch";
@@ -74,14 +75,27 @@ export default function GameShell({ initialUser, initialScreen }: { initialUser:
   }, []);
 
   useEffect(() => {
-    initSettings();
-    void music.init();
+    // Always start the music as soon as the player gives any kind of consent — this
+    // is the autoplay prompt the user asked for. Random shuffle is the default
+    // (set in src/game/settings.ts) so the first song is different on every visit.
+    const arm = () => {
+      music.unlock();
+      window.removeEventListener("pointerdown", arm, true);
+      window.removeEventListener("keydown", arm, true);
+      window.removeEventListener("touchstart", arm, true);
+    };
+    window.addEventListener("pointerdown", arm, true);
+    window.addEventListener("keydown", arm, true);
+    window.addEventListener("touchstart", arm, true);
   }, []);
 
   useEffect(() => {
     setBindingsState(loadBindings());
-    const t = window.setTimeout(() => setBooted(true), 50);
-    return () => window.clearTimeout(t);
+    initSettings();
+    // Minimum 1.4s on screen so the player reads it, capped at the music ready promise + 400ms.
+    const hardLimit = window.setTimeout(() => setBooted(true), 1400);
+    void music.init().then(() => window.setTimeout(() => setBooted(true), 400));
+    return () => window.clearTimeout(hardLimit);
   }, []);
 
   const setBindings = useCallback((b: Bindings) => {
@@ -129,7 +143,7 @@ export default function GameShell({ initialUser, initialScreen }: { initialUser:
         </>
       )}
       <div className="relative z-10 flex h-full flex-col">
-        {!inMatch && (
+        {!inMatch && screen.name !== "menu" && (
           <header className="flex items-center gap-6 px-6 pb-2 pt-3 md:px-10">
             <button onClick={back} className="flex items-center gap-3 transition hover:brightness-125" aria-label="Return to PixelRuggas home">
               <GameMark size={38} />
@@ -179,30 +193,31 @@ export default function GameShell({ initialUser, initialScreen }: { initialUser:
           </header>
         )}
 
-        <div className={`min-h-0 flex-1 overflow-y-auto scroll ${inMatch ? "" : "px-6 pb-2 pt-2 md:px-10"}`}>
-          {screen.name === "menu" && <MainMenu user={user} go={go} />}
-          {screen.name === "play" && (
+        <div className={`min-h-0 flex-1 ${inMatch || screen.name === "menu" ? "overflow-hidden" : "overflow-y-auto scroll px-6 pb-2 pt-2 md:px-10"}`}>
+          {!booted && <Loader />}
+          {booted && screen.name === "menu" && <MainMenu key="menu" user={user} go={go} onLogout={logout} offline={offline} />}
+          {booted && screen.name === "play" && (
             <PlaySetup key={screen.tournamentId ?? "quick"} user={user} bindings={bindings} tournamentId={screen.tournamentId} go={go} setInMatch={setInMatch} />
           )}
-          {screen.name === "competitions" && <CompetitionsScreen user={user} go={go} />}
-          {screen.name === "hub" && <HubScreen key={screen.id} id={screen.id} go={go} />}
-          {screen.name === "squads" && <SquadsScreen />}
-          {screen.name === "controls" && <ControlsScreen bindings={bindings} setBindings={setBindings} />}
-          {screen.name === "profile" && <ProfileScreen user={user} setUser={setUser} initialMode={screen.mode} go={go} offline={offline} />}
-          {screen.name === "howto" && <HowToScreen bindings={bindings} />}
-          {screen.name === "settings" && <SettingsScreen onBack={back} />}
-          {screen.name === "music" && <MusicScreen onBack={back} />}
-           {screen.name === "career" && (user ? <CareerStart user={user} go={go} /> : <ProfileScreen user={user} setUser={setUser} initialMode="login" go={go} />)}
-          {screen.name === "career-hub" && <CareerHub careerId={screen.id} go={go} />}
-          {screen.name === "career-match" && <CareerMatch careerId={screen.id} fixtureId={screen.fixtureId} mode={screen.mode} bindings={bindings} go={go} />}
-          {screen.name === "player-career-start" && (user ? <PlayerCareerStart user={user} go={go} /> : <ProfileScreen user={user} setUser={setUser} initialMode="login" go={go} />)}
-          {screen.name === "player-career-hub" && <PlayerCareerHub id={screen.id} go={go} />}
-          {screen.name === "online" && <OnlineFriendlies user={user} bindings={bindings} go={go} />}
-          {screen.name === "online-match" && <OnlineMatchRoom id={screen.id} bindings={bindings} go={go} />}
-          {screen.name === "ultimate" && <UltimateTeam user={user} bindings={bindings} go={go} setInMatch={setInMatch} />}
+          {booted && screen.name === "competitions" && <CompetitionsScreen user={user} go={go} />}
+          {booted && screen.name === "hub" && <HubScreen key={screen.id} id={screen.id} go={go} />}
+          {booted && screen.name === "squads" && <SquadsScreen />}
+          {booted && screen.name === "controls" && <ControlsScreen bindings={bindings} setBindings={setBindings} />}
+          {booted && screen.name === "profile" && <ProfileScreen user={user} setUser={setUser} initialMode={screen.mode} go={go} offline={offline} />}
+          {booted && screen.name === "howto" && <HowToScreen bindings={bindings} />}
+          {booted && screen.name === "settings" && <SettingsScreen onBack={back} />}
+          {booted && screen.name === "music" && <MusicScreen onBack={back} />}
+           {booted && screen.name === "career" && (user ? <CareerStart user={user} go={go} /> : <ProfileScreen user={user} setUser={setUser} initialMode="login" go={go} />)}
+          {booted && screen.name === "career-hub" && <CareerHub careerId={screen.id} go={go} />}
+          {booted && screen.name === "career-match" && <CareerMatch careerId={screen.id} fixtureId={screen.fixtureId} mode={screen.mode} bindings={bindings} go={go} />}
+          {booted && screen.name === "player-career-start" && (user ? <PlayerCareerStart user={user} go={go} /> : <ProfileScreen user={user} setUser={setUser} initialMode="login" go={go} />)}
+          {booted && screen.name === "player-career-hub" && <PlayerCareerHub id={screen.id} go={go} />}
+          {booted && screen.name === "online" && <OnlineFriendlies user={user} bindings={bindings} go={go} />}
+          {booted && screen.name === "online-match" && <OnlineMatchRoom id={screen.id} bindings={bindings} go={go} />}
+          {booted && screen.name === "ultimate" && <UltimateTeam user={user} bindings={bindings} go={go} setInMatch={setInMatch} />}
         </div>
 
-        {!inMatch && (
+        {!inMatch && screen.name !== "menu" && (
           <footer className="flex items-center gap-4 px-6 py-3 text-slate-300 md:px-10">
             <span>
               <Kbd>↑</Kbd><Kbd>↓</Kbd><Kbd>←</Kbd><Kbd>→</Kbd> navigate

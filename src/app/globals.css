@@ -188,6 +188,44 @@ html[data-smooth="1"] .game-canvas {
   }
 }
 
+/* ---------------- EA FC-style left rail ---------------- */
+.fc-rail {
+  position: relative;
+  background: linear-gradient(180deg, rgba(4, 8, 18, 0.78), rgba(4, 8, 18, 0.92));
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow: inset -10px 0 20px rgba(0, 0, 0, 0.4);
+}
+.fc-rail::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: linear-gradient(180deg, #16a34a 0%, #16a34a 30%, transparent 100%);
+  box-shadow: 0 0 18px rgba(34, 197, 94, 0.5);
+}
+.fc-hero {
+  background: linear-gradient(110deg, rgba(4, 8, 18, 0.1) 0%, rgba(4, 8, 18, 0.55) 60%, rgba(4, 8, 18, 0.75) 100%);
+}
+.fc-rail .menu-row {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  padding-left: 12px;
+}
+.fc-rail .menu-row.is-active {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 22%, transparent), transparent);
+  box-shadow: none;
+}
+.fc-rail .menu-row .menu-bar {
+  background: var(--accent);
+  opacity: 1;
+  width: 3px;
+  box-shadow: 0 0 8px color-mix(in srgb, var(--accent) 50%, transparent);
+}
+.fc-rail .menu-row.is-active {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 18%, transparent) 0%, transparent 100%);
+}
+
 /* ---------------- main menu rows ---------------- */
 .menu-row {
   --accent: #facc15;
