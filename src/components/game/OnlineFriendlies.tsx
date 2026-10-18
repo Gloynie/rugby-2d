@@ -48,6 +48,7 @@ const parseFrame = (packet: InputPacket | null | undefined): InputFrame => {
     moveY: Number.isFinite(f.moveY) ? Math.max(-1, Math.min(1, f.moveY)) : 0,
     sprint: !!f.sprint, kickHeld: !!f.kickHeld, passUp: !!f.passUp, passDown: !!f.passDown,
     kickRelease: !!f.kickRelease, dropGoal: !!f.dropGoal, action: !!f.action,
+    handOff: !!f.handOff, stepLeft: !!f.stepLeft, stepRight: !!f.stepRight, bounce: !!f.bounce,
     switchPlayer: !!f.switchPlayer, option1: !!f.option1, option2: !!f.option2, option3: !!f.option3,
   };
 };

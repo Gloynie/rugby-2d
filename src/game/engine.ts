@@ -244,6 +244,8 @@ export class RugbyEngine {
   rng: () => number = Math.random;
   /** When the user's team is in a scrum, the director runs a mash contest instead of auto-resolve. */
   scrumInteractive = false;
+  scrumWait = 0;
+  skillCooldown = 0;
   fendCooldown = 0;
 
   // --- New features ---
@@ -733,6 +735,7 @@ export class RugbyEngine {
       if (p.busy > 0) p.busy -= dt;
       if (p.tackleCooldown > 0) p.tackleCooldown -= dt;
     }
+    if (this.skillCooldown > 0) this.skillCooldown -= dt;
     switch (this.phase) {
       case "kickoff":
       case "dropout":
@@ -753,6 +756,18 @@ export class RugbyEngine {
       case "lineout":
         this.tickClock(dt);
         this.phaseTimer -= dt;
+        if (this.phase === "scrum" && this.scrumInteractive) {
+          // The director normally resolves this via the timing mini-game. If no one does
+          // (headless simulation, disconnected client), fall back to a normal scrum so
+          // the match can never soft-lock here.
+          this.scrumWait += dt;
+          if (this.scrumWait > 9) {
+            this.scrumInteractive = false;
+            this.scrumWait = 0;
+            this.resolveScrum();
+          }
+          break;
+        }
         if (this.phaseTimer <= 0) {
           if (this.phase === "scrum") this.resolveScrum();
           else this.resolveLineout();
@@ -1095,6 +1110,10 @@ export class RugbyEngine {
         this.punt(p, power);
         return;
       }
+      // ----- skill moves -----
+      if (input.handOff) { this.skillHandOff(p); return; }
+      if (input.bounce) { this.skillBounce(p); return; }
+      if (input.stepLeft || input.stepRight) { this.skillSideStep(p, input.stepLeft ? -1 : 1); return; }
       if (input.action && this.fx(p.team, p.pos.x) >= 109.6) {
         this.scoreTry(p);
       } else if (input.action && this.fendCooldown <= 0 && this.nearestOpponentDist(p) < 1.9) {
@@ -2098,9 +2117,10 @@ export class RugbyEngine {
     this.ball.pos = { x: this.wx(team, fM), y: my, z: 0 };
     this.phase = "scrum";
     this.scrumInteractive = this.userTeam !== null;
+    this.scrumWait = 0;
     this.phaseTimer = this.scrumInteractive ? 999 : 1.5;
     this.possession = team;
-    this.say("SCRUM", this.scrumInteractive ? "MASH [SPACE] TO SHOVE!" : `${this.teamName(team)} put-in`, "#ffffff", 2.4);
+    this.say("SCRUM", this.scrumInteractive ? "TIME YOUR SHOVE!" : `${this.teamName(team)} put-in`, "#ffffff", 2.4);
     if (this.userTeam !== null) this.controlled = this.pl(this.userTeam, 9).id;
   }
 
@@ -2130,6 +2150,80 @@ export class RugbyEngine {
     const pWin = clamp(0.86 + diff * 0.004, 0.6, 0.96);
     const winner: TeamIndex = this.rng() < pWin ? att : def;
     this.finishScrum(winner);
+  }
+
+  // ---------------------------------------------------------------- skill moves
+  /** Stiff-arm: push the nearest defender away. Strength + evasion vs their tackling. */
+  skillHandOff(p: PlayerState): void {
+    if (this.skillCooldown > 0) return;
+    this.skillCooldown = 0.85;
+    p.anim = "bounce";
+    p.animUntil = this.time + 0.45;
+    const def = this.nearestOpponent(p);
+    if (!def || dist(def.pos, p.pos) > 2.6) {
+      this.say("HAND OFF", "Nobody there!", "#94a3b8", 0.9);
+      return;
+    }
+    const chance = clamp(0.38 + (p.attrs.strength + p.attrs.evasion - (def.attrs.tackling + def.attrs.strength)) / 300, 0.12, 0.9);
+    if (this.rng() < chance) {
+      def.down = 1.3;
+      def.anim = "dive";
+      this.say("HAND OFF!", `${p.name} pushes ${def.name} away`, this.teams[p.team].color, 1.5);
+      this.pushComment(`Great hand off from ${p.name}.`, p.team);
+    } else {
+      this.say("HAND OFF", "Held up!", "#94a3b8", 0.9);
+    }
+  }
+
+  /** Power through contact – forwards are far better at this than backs. */
+  skillBounce(p: PlayerState): void {
+    if (this.skillCooldown > 0) return;
+    this.skillCooldown = 1.0;
+    p.anim = "bounce";
+    p.animUntil = this.time + 0.5;
+    const def = this.nearestOpponent(p);
+    if (!def || dist(def.pos, p.pos) > 2.8) {
+      this.say("BOUNCE", "No contact to win", "#94a3b8", 0.9);
+      return;
+    }
+    const forwardBonus = p.isForward ? 0.16 : -0.05;
+    const chance = clamp(0.34 + forwardBonus + (p.attrs.strength - def.attrs.tackling) / 230, 0.1, 0.9);
+    if (this.rng() < chance) {
+      def.down = 1.5;
+      def.anim = "dive";
+      // A successful bounce carries the runner forward through the hole.
+      const dir = this.teams[p.team].dir;
+      p.pos.x = clamp(p.pos.x + dir * 1.6, 0.5, L - 0.5);
+      this.say("BOUNCED OFF!", `${p.name} powers through ${def.name}`, this.teams[p.team].color, 1.5);
+      this.pushComment(`${p.name} bounces the tackler and surges forward!`, p.team);
+    } else {
+      this.say("BOUNCE", "Stopped in the tackle", "#94a3b8", 0.9);
+    }
+  }
+
+  /** Sharp lateral cut. Backs with high evasion beat defenders cleanly. */
+  skillSideStep(p: PlayerState, side: -1 | 1): void {
+    if (this.skillCooldown > 0) return;
+    this.skillCooldown = 0.8;
+    p.anim = "dive";
+    p.animUntil = this.time + 0.35;
+    // Move sharply across the field; the engine clamps to the pitch.
+    const shift = 2.4 + p.attrs.evasion / 55;
+    p.pos.y = clamp(p.pos.y + side * shift, 0.8, W - 0.8);
+    p.vel.y = side * Math.min(6, shift * 2);
+    const def = this.nearestOpponent(p);
+    const label = side < 0 ? "STEP LEFT" : "STEP RIGHT";
+    if (def && dist(def.pos, p.pos) < 4.2) {
+      const chance = clamp(0.4 + (p.attrs.evasion - def.attrs.tackling) / 220 + (p.isForward ? -0.12 : 0.08), 0.12, 0.92);
+      if (this.rng() < chance) {
+        def.down = 1.1;
+        def.anim = "dive";
+        this.say(`${label}!`, `${p.name} beats ${def.name}`, this.teams[p.team].color, 1.4);
+        this.pushComment(`Lovely footwork – ${p.name} steps clean past the defender.`, p.team);
+        return;
+      }
+    }
+    this.say(label, "", "#cbd5e1", 0.7);
   }
 
   /** Resolve an interactive scrum contest driven by the director mash mini-game. */

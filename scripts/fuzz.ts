@@ -17,7 +17,7 @@ for (let m = 0; m < 5; m++) {
     const f: InputFrame = {
       moveX: rnd(0.7) ? (rnd(0.6) ? 1 : -1) : 0, moveY: rnd(0.5) ? (rnd(0.5) ? 1 : -1) : 0,
       sprint: rnd(0.5), kickHeld, passUp: rnd(0.02), passDown: rnd(0.02), kickRelease: !kickHeld && rnd(0.01),
-      dropGoal: rnd(0.003), action: rnd(0.05), switchPlayer: rnd(0.01), option1: rnd(0.05), option2: rnd(0.05), option3: rnd(0.05),
+      dropGoal: rnd(0.003), action: rnd(0.05), switchPlayer: rnd(0.01), option1: rnd(0.05), option2: rnd(0.05), option3: rnd(0.05), handOff: false, stepLeft: false, stepRight: false, bounce: false,
     };
     e.update(1 / 60, f); steps++;
     phases[e.phase] = (phases[e.phase] ?? 0) + 1;

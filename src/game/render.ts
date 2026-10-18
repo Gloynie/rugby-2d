@@ -1969,6 +1969,8 @@ export class Renderer {
       `${k(bnd.up)}${k(bnd.down)}${k(bnd.left)}${k(bnd.right)} MOVE ${k(bnd.sprint)} SPRINT`,
       `${k(bnd.passUp)}/${k(bnd.passDown)} PASS ${k(bnd.kick)} KICK ${k(bnd.dropGoal)} DROP`,
       `${k(bnd.action)} TACKLE/DIVE ${k(bnd.switch)} SWITCH`,
+      `${k(bnd.handOff)} HANDOFF ${k(bnd.bounce)} BOUNCE`,
+      `${k(bnd.stepLeft)}/${k(bnd.stepRight)} STEP L/R  (R-STICK ON PAD)`,
     ];
     if (bnd.up === "ArrowUp" && bnd.down === "ArrowDown") lines[0] = `ARROWS MOVE  ${k(bnd.sprint)} SPRINT`;
     const w = Math.max(...lines.map((l) => this.measure(l))) + 12;

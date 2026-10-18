@@ -6,7 +6,7 @@ import type { InputFrame } from "../src/game/types";
 const idle: InputFrame = {
   moveX: 0, moveY: 0, sprint: false, kickHeld: false, passUp: false, passDown: false,
   kickRelease: false, dropGoal: false, action: false, switchPlayer: false,
-  option1: false, option2: false, option3: false,
+  option1: false, option2: false, option3: false, handOff: false, stepLeft: false, stepRight: false, bounce: false,
 };
 
 function run(homeId: string, awayId: string, halfSeconds: number, verbose: boolean) {

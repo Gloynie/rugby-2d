@@ -42,6 +42,25 @@ export class Director {
   private tossApplied = false;
   private scrumUser = 0;
   private scrumAi = 0;
+  // ---- timing-based scrum contest ----
+  private scrumPhase = 0;        // 0 = not started, 1..3 = shove number
+  private scrumMarker = 0;       // 0..1 sweeping position
+  private scrumDir: 1 | -1 = 1;
+  private scrumSpeed = 1.1;
+  private scrumTarget = 0.5;     // centre of the sweet spot
+  private scrumHalfWidth = 0.12; // half-width of the sweet spot
+  private scrumHits = 0;
+  private scrumLock = 0;
+  private scrumFeedback = "";
+
+  /** Pick a fresh sweet spot; later shoves are faster and narrower. */
+  private rollScrumTarget(packEdge: number): void {
+    const step = Math.max(1, this.scrumPhase);
+    this.scrumHalfWidth = Math.max(0.055, 0.135 - step * 0.022 + packEdge * 0.0022);
+    this.scrumSpeed = 0.95 + step * 0.26 - packEdge * 0.012;
+    // keep the target away from the extreme edges so it is always reachable
+    this.scrumTarget = 0.22 + Math.random() * 0.56;
+  }
 
   constructor(
     private engine: RugbyEngine,
@@ -242,11 +261,13 @@ export class Director {
           this.t = 0;
           this.scrumUser = 0;
           this.scrumAi = 0;
+          this.scrumPhase = 0;
         }
         break;
       }
       case "scrum": {
-        // Fast-click scrum contest: mash to shove; double the AI's push to win a penalty.
+        // Timing contest: a marker sweeps the bar, press on the sweet spot. Three shoves,
+        // each with a smaller target, so a dominant scrum takes real precision.
         f.frozen = true;
         f.zoom = 1.5;
         f.hideHUD = true;
@@ -254,17 +275,55 @@ export class Director {
         const r = this.engine.restart;
         f.camTarget = r ? { x: r.x, y: r.y } : { x: 60, y: 35 };
         f.camSpeed = 8;
-        // A genuine contest: the AI shoves hard and your push decays, so you must keep mashing.
-        if (input?.action) this.scrumUser = Math.min(1, this.scrumUser + 0.075);
-        this.scrumUser = Math.max(0, this.scrumUser - dt * 0.11);
+
         const userPack = this.engine.userTeam !== null ? this.engine.packStrengthPublic(this.engine.userTeam) : 70;
         const oppPack = this.engine.userTeam !== null ? this.engine.packStrengthPublic(otherIdx(this.engine.userTeam)) : 70;
-        const aiRate = 0.42 + Math.max(-0.12, Math.min(0.14, (oppPack - userPack) * 0.006));
-        this.scrumAi = Math.min(1, this.scrumAi + aiRate * dt);
-        const done = this.scrumUser >= 1 || this.scrumAi >= 1 || this.t > 3.2;
-        if (done) {
+        // A stronger pack gets a slightly wider target and a slower sweep.
+        const packEdge = Math.max(-10, Math.min(10, userPack - oppPack));
+
+        if (this.scrumPhase === 0) {
+          // first frame of this contest – set the sweet spot up
+          this.scrumPhase = 1;
+          this.scrumMarker = 0;
+          this.scrumDir = 1;
+          this.scrumHits = 0;
+          this.scrumFeedback = "";
+          this.rollScrumTarget(packEdge);
+        }
+
+        if (!paused) {
+          const speed = this.scrumSpeed;
+          this.scrumMarker += this.scrumDir * speed * dt;
+          if (this.scrumMarker >= 1) { this.scrumMarker = 1; this.scrumDir = -1; }
+          if (this.scrumMarker <= 0) { this.scrumMarker = 0; this.scrumDir = 1; }
+        }
+
+        if (input?.action && this.scrumLock <= 0) {
+          this.scrumLock = 0.25;
+          const dist = Math.abs(this.scrumMarker - this.scrumTarget);
+          if (dist <= this.scrumHalfWidth * 0.4) {
+            this.scrumHits += 1.0;
+            this.scrumFeedback = "PERFECT SHOVE!";
+          } else if (dist <= this.scrumHalfWidth) {
+            this.scrumHits += 0.6;
+            this.scrumFeedback = "GOOD SHOVE";
+          } else {
+            this.scrumHits -= 0.35;
+            this.scrumFeedback = "SLIPPED!";
+          }
+          this.scrumPhase++;
+          if (this.scrumPhase <= 3) this.rollScrumTarget(packEdge);
+        }
+        if (this.scrumLock > 0) this.scrumLock -= dt;
+
+        const outOfTime = this.t > 7.5;
+        if (this.scrumPhase > 3 || outOfTime) {
           this.engine.scrumInteractive = false;
-          this.engine.resolveScrumContest(this.scrumUser, this.scrumAi, this.engine.userTeam ?? 0);
+          // Convert the three timed shoves into the 0..1 push values the engine expects.
+          const userPush = Math.max(0, Math.min(1, this.scrumHits / 3));
+          const aiPush = Math.max(0, Math.min(1, 0.52 - packEdge * 0.012 + (outOfTime ? 0.3 : 0)));
+          this.engine.resolveScrumContest(userPush >= 0.92 ? 1 : userPush, aiPush >= 0.92 ? 1 : aiPush, this.engine.userTeam ?? 0);
+          this.scrumPhase = 0;
           this.scene = "live";
         }
         f.drawOverlay = (r2) => this.drawScrumContest(r2);
@@ -431,21 +490,45 @@ export class Director {
   }
 
   private drawScrumContest(r: Renderer): void {
-    const e = this.engine;
-    const user = e.userTeam ?? 0;
+    const key = keyLabel(this.opts.bindings.action, true);
     const w = 340;
     const x = r.bufW / 2 - w / 2;
-    const y = r.bufH / 2 - 70;
-    r.panel(x, y, w, 140, { fill: "rgba(5,10,20,0.94)", accent: "#facc15" });
-    r.text("SCRUM! MASH [SPACE]!", r.bufW / 2, y + 10, { align: "center", size: 12, color: "#facc15" });
-    const bw = w - 40;
-    r.text("YOU", x + 20, y + 42, { size: 8, color: e.teams[user].color });
-    r.bar(x + 70, y + 42, bw - 50, 10, this.scrumUser, "#22c55e");
-    r.text("THEM", x + 20, y + 66, { size: 8, color: e.teams[otherIdx(user)].color });
-    r.bar(x + 70, y + 66, bw - 50, 10, this.scrumAi, "#ef4444");
-    r.text("DOUBLE THEIR SHOVE TO WIN A PENALTY", r.bufW / 2, y + 96, { align: "center", size: 7, color: "#94a3b8" });
-    const clicks = Math.round(this.scrumUser / 0.085);
-    r.text(`${clicks} SHOVES`, r.bufW / 2, y + 114, { align: "center", size: 8, color: "#ffffff" });
+    const y = r.bufH / 2 - 76;
+    r.panel(x, y, w, 152, { fill: "rgba(5,10,20,0.94)", accent: "#facc15" });
+    const shove = Math.min(3, Math.max(1, this.scrumPhase));
+    r.text(`SCRUM – SHOVE ${shove} OF 3`, r.bufW / 2, y + 10, { align: "center", size: 11, color: "#facc15" });
+    r.text(`PRESS ${key} ON THE GREEN`, r.bufW / 2, y + 28, { align: "center", size: 7, color: "#cbd5e1" });
+
+    // timing bar
+    const bx = x + 24;
+    const bw = w - 48;
+    const by = y + 48;
+    r.rect(bx, by, bw, 18, "#0b1020");
+    r.rect(bx, by, bw, 1, "#334155");
+    r.rect(bx, by + 17, bw, 1, "#334155");
+    // sweet spot
+    const sw = Math.max(6, bw * this.scrumHalfWidth * 2);
+    const sx = bx + bw * this.scrumTarget - sw / 2;
+    r.rect(sx, by + 1, sw, 16, "rgba(34,197,94,0.35)");
+    // perfect core
+    const pw = Math.max(3, sw * 0.4);
+    r.rect(bx + bw * this.scrumTarget - pw / 2, by + 1, pw, 16, "rgba(250,204,21,0.55)");
+    // marker
+    const mx = bx + bw * this.scrumMarker;
+    r.rect(mx - 1, by - 3, 3, 24, "#f8fafc");
+
+    // shove pips
+    for (let i = 0; i < 3; i++) {
+      const filled = i < this.scrumPhase - 1;
+      r.rect(bx + i * 16, y + 78, 12, 5, filled ? "#22c55e" : "#334155");
+    }
+    r.text(`POWER ${Math.round(Math.max(0, this.scrumHits) / 3 * 100)}%`, x + w - 24, y + 76, { align: "right", size: 8, color: "#ffffff" });
+    if (this.scrumFeedback) {
+      const col = this.scrumFeedback.startsWith("PERFECT") ? "#facc15" : this.scrumFeedback.startsWith("GOOD") ? "#22c55e" : "#f87171";
+      r.text(this.scrumFeedback, r.bufW / 2, y + 96, { align: "center", size: 10, color: col });
+    }
+    r.text("NAIL ALL THREE FOR A DOMINANT SCRUM", r.bufW / 2, y + 120, { align: "center", size: 7, color: "#94a3b8" });
+    r.text("MISS AND YOUR PACK GOES BACKWARDS", r.bufW / 2, y + 134, { align: "center", size: 6, color: "#64748b" });
   }
 
   private drawStadiumPanLabel(r: Renderer): void {

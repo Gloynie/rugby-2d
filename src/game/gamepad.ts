@@ -34,6 +34,14 @@ export type PadAction = Exclude<Action, "up" | "down" | "left" | "right">;
 
 export type PadBindings = Record<PadAction, number>;
 
+/** Skill moves live on the right stick, so they are not in the rebindable button list. */
+export const PAD_STICK_MOVES: { dir: string; label: string }[] = [
+  { dir: "Right stick ↑", label: "Hand off" },
+  { dir: "Right stick ↓", label: "Bounce / fend" },
+  { dir: "Right stick ←", label: "Side step left" },
+  { dir: "Right stick →", label: "Side step right" },
+];
+
 export const PAD_ACTIONS: { id: PadAction; label: string; desc: string }[] = [
   { id: "action", label: "Action", desc: "Tackle · dive · kick-off · goal meter · skip replay" },
   { id: "sprint", label: "Sprint", desc: "Hold to accelerate" },
@@ -62,6 +70,11 @@ export const DEFAULT_PAD_BINDINGS: PadBindings = {
   opt3: 15,       // D-pad right
   pause: 9,       // Start
   help: 8,        // Back
+  // Skill moves default to the right stick, but keep button fallbacks.
+  handOff: 3,     // Y
+  bounce: 2,      // X
+  stepLeft: 10,   // L3
+  stepRight: 11,  // R3
 };
 
 const PAD_KEY = "pixelruggas.pad.v1";
@@ -102,9 +115,12 @@ export interface PadSnapshot {
   pressed: Set<number>;
   moveX: number;
   moveY: number;
+  /** Right stick, used for skill moves. */
+  rightX: number;
+  rightY: number;
 }
 
-const EMPTY_PAD: PadSnapshot = { connected: false, id: "", held: new Set(), pressed: new Set(), moveX: 0, moveY: 0 };
+const EMPTY_PAD: PadSnapshot = { connected: false, id: "", held: new Set(), pressed: new Set(), moveX: 0, moveY: 0, rightX: 0, rightY: 0 };
 
 /**
  * Reads the first connected pad. Call `poll()` once per frame; `pressed` only
@@ -152,7 +168,14 @@ export class GamepadReader {
     if (held.has(12)) moveY = -1;
     if (held.has(13)) moveY = 1;
 
-    this.snap = { connected: true, id: pad.id, held, pressed, moveX, moveY };
+    // Right stick (axes 2/3 on the standard layout) drives the skill moves.
+    const rx = pad.axes[2] ?? 0;
+    const ry = pad.axes[3] ?? 0;
+    this.snap = {
+      connected: true, id: pad.id, held, pressed, moveX, moveY,
+      rightX: Math.abs(rx) > 0.12 ? rx : 0,
+      rightY: Math.abs(ry) > 0.12 ? ry : 0,
+    };
     return this.snap;
   }
 
@@ -166,4 +189,52 @@ export function anyPadConnected(): boolean {
   if (typeof navigator === "undefined" || !navigator.getGamepads) return false;
   for (const p of navigator.getGamepads()) if (p && p.connected) return true;
   return false;
+}
+
+/**
+ * Menu navigation helper. Converts stick / d-pad movement into discrete steps with
+ * repeat-delay, so holding a direction scrolls at a readable pace rather than flying.
+ */
+export class MenuPad {
+  private lastDir = 0;
+  private repeatAt = 0;
+  private prevConfirm = false;
+  private prevBack = false;
+
+  poll(): { up: boolean; down: boolean; confirm: boolean; back: boolean } {
+    const out = { up: false, down: false, confirm: false, back: false };
+    if (typeof navigator === "undefined" || !navigator.getGamepads) return out;
+    let pad: Gamepad | null = null;
+    for (const p of navigator.getGamepads()) {
+      if (p && p.connected) { pad = p; break; }
+    }
+    if (!pad) {
+      this.lastDir = 0;
+      return out;
+    }
+
+    const ay = pad.axes[1] ?? 0;
+    let dir = Math.abs(ay) > 0.55 ? Math.sign(ay) : 0;
+    if (pad.buttons[12]?.pressed) dir = -1;
+    if (pad.buttons[13]?.pressed) dir = 1;
+
+    const now = performance.now();
+    if (dir !== 0) {
+      // First press fires at once; holding repeats every 170ms.
+      if (dir !== this.lastDir || now >= this.repeatAt) {
+        if (dir < 0) out.up = true;
+        else out.down = true;
+        this.repeatAt = now + (dir !== this.lastDir ? 340 : 170);
+      }
+    }
+    this.lastDir = dir;
+
+    const confirm = !!(pad.buttons[0]?.pressed);
+    const back = !!(pad.buttons[1]?.pressed);
+    out.confirm = confirm && !this.prevConfirm;
+    out.back = back && !this.prevBack;
+    this.prevConfirm = confirm;
+    this.prevBack = back;
+    return out;
+  }
 }

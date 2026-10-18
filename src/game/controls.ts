@@ -3,6 +3,7 @@ export type Action =
   | "passUp" | "passDown" | "kick" | "dropGoal"
   | "action" | "switch"
   | "opt1" | "opt2" | "opt3"
+  | "handOff" | "stepLeft" | "stepRight" | "bounce"
   | "pause" | "help";
 
 export type Bindings = Record<Action, string>;
@@ -19,6 +20,10 @@ export const ACTIONS: { id: Action; label: string; desc: string; group: string }
   { id: "dropGoal", label: "Drop goal", desc: "Attempt a drop goal", group: "Attack" },
   { id: "action", label: "Action", desc: "Tackle · dive for the line · take kick-off · goal-kick meter · skip replay", group: "General" },
   { id: "switch", label: "Switch player", desc: "Take control of the nearest defender", group: "Defence" },
+  { id: "handOff", label: "Hand off", desc: "Stiff-arm the closest defender away (strength vs their tackling)", group: "Skill moves" },
+  { id: "stepLeft", label: "Side step left", desc: "Sharp cut to the left to beat a defender", group: "Skill moves" },
+  { id: "stepRight", label: "Side step right", desc: "Sharp cut to the right to beat a defender", group: "Skill moves" },
+  { id: "bounce", label: "Bounce / fend", desc: "Power through contact – best with a big forward", group: "Skill moves" },
   { id: "opt1", label: "Penalty – kick at goal", desc: "Choose the shot at goal", group: "Penalties" },
   { id: "opt2", label: "Penalty – kick to touch", desc: "Kick for a lineout", group: "Penalties" },
   { id: "opt3", label: "Penalty – tap and go", desc: "Quick tap", group: "Penalties" },
@@ -31,6 +36,7 @@ export const DEFAULT_BINDINGS: Bindings = {
   passUp: "KeyW", passDown: "KeyS", kick: "KeyA", dropGoal: "KeyD",
   action: "Space", switch: "KeyQ",
   opt1: "Digit1", opt2: "Digit2", opt3: "Digit3",
+  handOff: "KeyE", stepLeft: "KeyZ", stepRight: "KeyC", bounce: "KeyX",
   pause: "Escape", help: "KeyH",
 };
 

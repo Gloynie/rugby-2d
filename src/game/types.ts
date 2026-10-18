@@ -173,6 +173,11 @@ export interface InputFrame {
   option1: boolean;
   option2: boolean;
   option3: boolean;
+  /** Skill moves (one-shot taps while carrying the ball) */
+  handOff: boolean;
+  stepLeft: boolean;
+  stepRight: boolean;
+  bounce: boolean;
 }
 
 export interface MatchConfig {

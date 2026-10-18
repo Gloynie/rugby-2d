@@ -1,7 +1,7 @@
 import { RugbyEngine } from "../src/game/engine";
 import { getTeam } from "../src/game/data";
 import type { InputFrame } from "../src/game/types";
-const idle: InputFrame = { moveX: 0, moveY: 0, sprint: false, kickHeld: false, passUp: false, passDown: false, kickRelease: false, dropGoal: false, action: false, switchPlayer: false, option1: false, option2: false, option3: false };
+const idle: InputFrame = { moveX: 0, moveY: 0, sprint: false, kickHeld: false, passUp: false, passDown: false, kickRelease: false, dropGoal: false, action: false, switchPlayer: false, option1: false, option2: false, option3: false, handOff: false, stepLeft: false, stepRight: false, bounce: false, };
 const e = new RugbyEngine({ home: getTeam("ire"), away: getTeam("fra"), userTeam: null, halfSeconds: 150, difficulty: "normal" });
 let steps = 0;
 const acc: Record<string, number> = {};

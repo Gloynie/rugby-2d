@@ -207,7 +207,7 @@ export function simulateMatch(home: TeamData, away: TeamData, difficulty: Diffic
     engine.update(1 / 60, {
       moveX: 0, moveY: 0, sprint: false, kickHeld: false, passUp: false, passDown: false,
       kickRelease: false, dropGoal: false, action: false, switchPlayer: false,
-      option1: false, option2: false, option3: false,
+      option1: false, option2: false, option3: false, handOff: false, stepLeft: false, stepRight: false, bounce: false,
     });
     frames++;
   }

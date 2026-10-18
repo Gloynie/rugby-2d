@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as audio from "@/game/audio";
 import { COMPETITIONS, STADIUMS, TEAMS, findTeam, getTeam } from "@/game/data";
-import { anyPadConnected } from "@/game/gamepad";
+import { MenuPad, anyPadConnected } from "@/game/gamepad";
 import { music, useMusic } from "@/game/music/player";
 import type { SessionUser } from "@/lib/auth";
 import type { Screen } from "./GameShell";
@@ -157,6 +157,22 @@ export default function MainMenu({
     return () => window.removeEventListener("keydown", h);
   });
 
+  // Controller navigation: left stick / d-pad to browse, A to select, B to go back.
+  useEffect(() => {
+    const reader = new MenuPad();
+    let raf = 0;
+    const tick = () => {
+      const nav = reader.poll();
+      if (nav.down) setSel((s) => (s + 1) % items.length);
+      if (nav.up) setSel((s) => (s - 1 + items.length) % items.length);
+      if (nav.confirm) setSel((s) => { open(items[s]); return s; });
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items]);
+
   const fav = findTeam(user?.favouriteTeam) ?? getTeam("rsa");
   const played = record ? record.wins + record.draws + record.losses : 0;
   const level = Math.max(1, Math.floor(played / 5) + 1);
@@ -239,8 +255,8 @@ export default function MainMenu({
       </div>
 
       {/* ── left: mode list ── */}
-      <nav className="absolute left-7 top-1/2 z-20 w-[280px] -translate-y-1/2">
-        <ul className="space-y-1">
+      <nav className="absolute left-7 top-1/2 z-20 w-[360px] -translate-y-1/2">
+        <ul className="space-y-1.5">
           {items.map((it, i) => {
             const active = i === sel;
             return (
@@ -249,27 +265,27 @@ export default function MainMenu({
                   type="button"
                   onMouseEnter={() => setSel(i)}
                   onClick={() => (active ? open(it) : setSel(i))}
-                  className={`group flex w-full items-center gap-2 py-1 text-left transition-all duration-150 ${
+                  className={`group flex w-full items-center gap-2.5 py-1.5 text-left transition-all duration-150 ${
                     active ? "translate-x-1.5" : ""
                   }`}
                 >
                   <span
-                    className="block w-1 shrink-0 transition-all duration-150"
-                    style={{ height: active ? 22 : 0, background: it.accent }}
+                    className="block w-1.5 shrink-0 transition-all duration-150"
+                    style={{ height: active ? 32 : 0, background: it.accent }}
                   />
                   <span
                     className={`font-pixel uppercase leading-tight transition-all duration-150 ${
                       active
-                        ? "text-[15px] text-white drop-shadow-[2px_2px_0_#000]"
+                        ? "text-[21px] text-white drop-shadow-[2px_2px_0_#000]"
                         : it.soon
-                          ? "text-[11px] text-slate-600"
-                          : "text-[11px] text-slate-400 group-hover:text-slate-200"
+                          ? "text-[15px] text-slate-600"
+                          : "text-[15px] text-slate-400 group-hover:text-slate-200"
                     }`}
                   >
                     {it.title}
                   </span>
                   {it.soon && (
-                    <span className="font-pixel text-[6px] uppercase tracking-widest text-yellow-500/70">Soon</span>
+                    <span className="font-pixel text-[8px] uppercase tracking-widest text-yellow-500/70">Soon</span>
                   )}
                 </button>
               </li>

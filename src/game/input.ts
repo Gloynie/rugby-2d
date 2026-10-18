@@ -7,7 +7,7 @@ const ALWAYS_PREVENT = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight
 export const IDLE_INPUT: InputFrame = {
   moveX: 0, moveY: 0, sprint: false, kickHeld: false, passUp: false, passDown: false,
   kickRelease: false, dropGoal: false, action: false, switchPlayer: false,
-  option1: false, option2: false, option3: false,
+  option1: false, option2: false, option3: false, handOff: false, stepLeft: false, stepRight: false, bounce: false,
 };
 
 export class InputManager {
@@ -16,6 +16,7 @@ export class InputManager {
   private kickReleased = false;
   private skipEdge = false;
   private padKickWasHeld = false;
+  private stickArmed = true;
   private bindings: Bindings;
   private onPause: () => void;
   private onToggleHelp: () => void;
@@ -89,6 +90,20 @@ export class InputManager {
     return s;
   }
 
+  /**
+   * Convert the right stick into a single directional skill-move trigger.
+   * The stick must come back near centre before another move can fire.
+   */
+  private readRightStick(x: number, y: number): "up" | "down" | "left" | "right" | null {
+    const FIRE = 0.6;
+    const REARM = 0.3;
+    const mag = Math.hypot(x, y);
+    if (mag < REARM) this.stickArmed = true;
+    if (!this.stickArmed || mag < FIRE) return null;
+    this.stickArmed = false;
+    return Math.abs(x) > Math.abs(y) ? (x < 0 ? "left" : "right") : (y < 0 ? "up" : "down");
+  }
+
   /** Build the frame for this simulation step and clear one-shot edges. */
   frame(): InputFrame {
     const k = this.keys;
@@ -109,6 +124,8 @@ export class InputManager {
     this.padKickWasHeld = padHeld("kick");
     if (padTap("action")) this.skipEdge = true;
 
+    // Right stick fires a skill move once per flick (must return to centre to re-arm).
+    const stick = this.readRightStick(g.rightX, g.rightY);
     const keyX = (k.has(b.right) ? 1 : 0) - (k.has(b.left) ? 1 : 0);
     const keyY = (k.has(b.down) ? 1 : 0) - (k.has(b.up) ? 1 : 0);
     const f: InputFrame = {
@@ -125,6 +142,11 @@ export class InputManager {
       option1: e.has(b.opt1) || padTap("opt1"),
       option2: e.has(b.opt2) || padTap("opt2"),
       option3: e.has(b.opt3) || padTap("opt3"),
+      // Skill moves: keyboard keys, pad buttons, or a flick of the right stick.
+      handOff: e.has(b.handOff) || padTap("handOff") || stick === "up",
+      stepLeft: e.has(b.stepLeft) || padTap("stepLeft") || stick === "left",
+      stepRight: e.has(b.stepRight) || padTap("stepRight") || stick === "right",
+      bounce: e.has(b.bounce) || padTap("bounce") || stick === "down",
     };
     this.edges.clear();
     this.kickReleased = false;

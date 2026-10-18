@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { ACTIONS, DEFAULT_BINDINGS, PRESETS, UNBINDABLE, keyLabel, type Action, type Bindings } from "@/game/controls";
 import {
-  DEFAULT_PAD_BINDINGS, GamepadReader, PAD_ACTIONS, loadPadBindings, padButtonLabel, savePadBindings,
+  DEFAULT_PAD_BINDINGS, GamepadReader, PAD_ACTIONS, PAD_STICK_MOVES, loadPadBindings, padButtonLabel, savePadBindings,
   type PadAction, type PadBindings,
 } from "@/game/gamepad";
 import { Btn, Kbd, Kicker, Panel, ScreenHeader, Scroll } from "./ui";
@@ -200,6 +200,19 @@ function ControllerTab() {
                 <Kbd>D-PAD</Kbd>
               </li>
             </ul>
+            <Kicker className="mt-4">Skill moves · right stick</Kicker>
+            <p className="mt-1 text-base text-slate-400">Flick the right stick while carrying the ball.</p>
+            <ul className="mt-2 divide-y divide-white/10">
+              {PAD_STICK_MOVES.map((m) => (
+                <li key={m.dir} className="flex items-center justify-between py-2">
+                  <span className="text-xl">{m.label}</span>
+                  <Kbd>{m.dir}</Kbd>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-2 text-base text-slate-500">
+              The buttons below also trigger these, if you prefer them to the stick.
+            </p>
           </Panel>
           <Panel className="p-4 md:col-span-1 xl:col-span-2">
             <Kicker>Buttons</Kicker>

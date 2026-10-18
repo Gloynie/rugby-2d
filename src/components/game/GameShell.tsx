@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { DEFAULT_BINDINGS, loadBindings, saveBindings, type Bindings } from "@/game/controls";
 import { findTeam } from "@/game/data";
+import { MenuPad } from "@/game/gamepad";
 import { music } from "@/game/music/player";
 import { initSettings } from "@/game/settings";
 import type { SessionUser } from "@/lib/auth";
@@ -100,6 +101,19 @@ export default function GameShell({ initialUser, initialScreen }: { initialUser:
 
   const go = useCallback((s: Screen) => setScreen(s), []);
   const back = useCallback(() => setScreen({ name: "menu" }), []);
+
+  // Controller "B" goes back from any sub-screen, mirroring Escape.
+  useEffect(() => {
+    if (inMatch || screen.name === "menu") return;
+    const reader = new MenuPad();
+    let raf = 0;
+    const tick = () => {
+      if (reader.poll().back) back();
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [inMatch, screen, back]);
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
