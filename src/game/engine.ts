@@ -2156,21 +2156,26 @@ export class RugbyEngine {
   /** Stiff-arm: push the nearest defender away. Strength + evasion vs their tackling. */
   skillHandOff(p: PlayerState): void {
     if (this.skillCooldown > 0) return;
-    this.skillCooldown = 0.85;
+    this.skillCooldown = 1.6;
     p.anim = "bounce";
     p.animUntil = this.time + 0.45;
     const def = this.nearestOpponent(p);
-    if (!def || dist(def.pos, p.pos) > 2.6) {
+    if (!def || dist(def.pos, p.pos) > 2.1) {
       this.say("HAND OFF", "Nobody there!", "#94a3b8", 0.9);
       return;
     }
-    const chance = clamp(0.38 + (p.attrs.strength + p.attrs.evasion - (def.attrs.tackling + def.attrs.strength)) / 300, 0.12, 0.9);
+    // Harder: lower base, bigger stat divisor, capped at 55%.
+    const chance = clamp(0.22 + (p.attrs.strength + p.attrs.evasion - (def.attrs.tackling + def.attrs.strength)) / 420, 0.06, 0.55);
     if (this.rng() < chance) {
-      def.down = 1.3;
+      def.down = 1.0;
       def.anim = "dive";
       this.say("HAND OFF!", `${p.name} pushes ${def.name} away`, this.teams[p.team].color, 1.5);
       this.pushComment(`Great hand off from ${p.name}.`, p.team);
     } else {
+      // A failed fend leaves you slow and exposed for a moment.
+      p.busy = Math.max(p.busy, 0.35);
+      p.vel.x *= 0.3;
+      p.vel.y *= 0.3;
       this.say("HAND OFF", "Held up!", "#94a3b8", 0.9);
     }
   }
@@ -2178,25 +2183,30 @@ export class RugbyEngine {
   /** Power through contact – forwards are far better at this than backs. */
   skillBounce(p: PlayerState): void {
     if (this.skillCooldown > 0) return;
-    this.skillCooldown = 1.0;
+    this.skillCooldown = 1.8;
     p.anim = "bounce";
     p.animUntil = this.time + 0.5;
     const def = this.nearestOpponent(p);
-    if (!def || dist(def.pos, p.pos) > 2.8) {
+    if (!def || dist(def.pos, p.pos) > 2.2) {
       this.say("BOUNCE", "No contact to win", "#94a3b8", 0.9);
       return;
     }
-    const forwardBonus = p.isForward ? 0.16 : -0.05;
-    const chance = clamp(0.34 + forwardBonus + (p.attrs.strength - def.attrs.tackling) / 230, 0.1, 0.9);
+    // Harder: backs get a real penalty, cap 50%.
+    const forwardBonus = p.isForward ? 0.10 : -0.14;
+    const chance = clamp(0.20 + forwardBonus + (p.attrs.strength - def.attrs.tackling) / 330, 0.05, 0.5);
     if (this.rng() < chance) {
-      def.down = 1.5;
+      def.down = 1.2;
       def.anim = "dive";
-      // A successful bounce carries the runner forward through the hole.
+      // A successful bounce carries the runner a little way through the hole.
       const dir = this.teams[p.team].dir;
-      p.pos.x = clamp(p.pos.x + dir * 1.6, 0.5, L - 0.5);
+      p.pos.x = clamp(p.pos.x + dir * 0.9, 0.5, L - 0.5);
       this.say("BOUNCED OFF!", `${p.name} powers through ${def.name}`, this.teams[p.team].color, 1.5);
       this.pushComment(`${p.name} bounces the tackler and surges forward!`, p.team);
     } else {
+      // Stopped: you stall and the defender has you lined up.
+      p.busy = Math.max(p.busy, 0.45);
+      p.vel.x *= 0.2;
+      p.vel.y *= 0.2;
       this.say("BOUNCE", "Stopped in the tackle", "#94a3b8", 0.9);
     }
   }
@@ -2204,19 +2214,24 @@ export class RugbyEngine {
   /** Sharp lateral cut. Backs with high evasion beat defenders cleanly. */
   skillSideStep(p: PlayerState, side: -1 | 1): void {
     if (this.skillCooldown > 0) return;
-    this.skillCooldown = 0.8;
+    this.skillCooldown = 1.4;
     p.anim = "dive";
     p.animUntil = this.time + 0.35;
-    // Move sharply across the field; the engine clamps to the pitch.
-    const shift = 2.4 + p.attrs.evasion / 55;
+    // Smaller lateral shift than before; agility matters.
+    const shift = (1.3 + p.attrs.evasion / 110);
     p.pos.y = clamp(p.pos.y + side * shift, 0.8, W - 0.8);
-    p.vel.y = side * Math.min(6, shift * 2);
+    p.vel.y = side * Math.min(4, shift * 1.6);
+    // stepping bleeds forward momentum so you cannot step at full tilt forever
+    p.vel.x *= 0.75;
     const def = this.nearestOpponent(p);
     const label = side < 0 ? "STEP LEFT" : "STEP RIGHT";
-    if (def && dist(def.pos, p.pos) < 4.2) {
-      const chance = clamp(0.4 + (p.attrs.evasion - def.attrs.tackling) / 220 + (p.isForward ? -0.12 : 0.08), 0.12, 0.92);
+    if (def && dist(def.pos, p.pos) < 3.2) {
+      // Harder: lower base and cap, forwards really struggle, and a defender who is
+      // already square to you (close) is tougher to beat.
+      const close = dist(def.pos, p.pos) < 1.6 ? -0.08 : 0;
+      const chance = clamp(0.24 + close + (p.attrs.evasion - def.attrs.tackling) / 300 + (p.isForward ? -0.16 : 0.04), 0.06, 0.6);
       if (this.rng() < chance) {
-        def.down = 1.1;
+        def.down = 0.9;
         def.anim = "dive";
         this.say(`${label}!`, `${p.name} beats ${def.name}`, this.teams[p.team].color, 1.4);
         this.pushComment(`Lovely footwork – ${p.name} steps clean past the defender.`, p.team);

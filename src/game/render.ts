@@ -162,6 +162,12 @@ export class Renderer {
   private b: CanvasRenderingContext2D;
   private stadium: Stadium;
   private looks: [Look[], Look[]] = [[], []];
+
+  /** The baked kit/look for a given player – lets cinematics draw a featured player. */
+  lookFor(team: TeamIndex, shirtNumber: number): Look | null {
+    const roster = this.looks[team];
+    return roster[Math.max(0, shirtNumber - 1)] ?? roster[0] ?? null;
+  }
   private crowd: CanvasPattern[] = [];
   private balls: Record<string, HTMLCanvasElement> = {};
   private phase: number[] = [];
