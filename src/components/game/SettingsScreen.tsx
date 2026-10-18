@@ -45,7 +45,12 @@ export default function SettingsScreen({ onBack }: { onBack: () => void }) {
               <Btn primary={s.matchMusic === "quiet"} onClick={() => set({ matchMusic: "quiet" })}>Quiet in background</Btn>
               <Btn primary={s.matchMusic === "off"} onClick={() => set({ matchMusic: "off" })}>Silent</Btn>
             </div>
-            <p className="mt-2 text-base text-slate-400">Add songs, skip or shuffle from Main menu → Music.</p>
+            <div className="mt-3 flex gap-3">
+              <Btn primary={s.shuffle} onClick={() => set({ shuffle: !s.shuffle })}>
+                {s.shuffle ? "Shuffle on" : "Shuffle off"}
+              </Btn>
+            </div>
+            <p className="mt-2 text-base text-slate-400">Skip / shuffle from the now-playing bar.</p>
           </Panel>
         </div>
       </Scroll>
