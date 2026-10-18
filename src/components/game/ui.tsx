@@ -142,9 +142,12 @@ export function Scroll({ children, className = "" }: { children: ReactNode; clas
 export function ScreenHeader({ kicker, title, right }: { kicker: string; title: string; right?: ReactNode }) {
   return (
     <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
-      <div>
-        <Kicker>{kicker}</Kicker>
-        <Title>{title}</Title>
+      <div className="flex items-stretch gap-3">
+        <span className="w-1.5 shrink-0 bg-green-400 shadow-[0_0_12px_rgba(74,222,128,0.55)]" aria-hidden />
+        <div>
+          <Kicker>{kicker}</Kicker>
+          <Title>{title}</Title>
+        </div>
       </div>
       {right}
     </div>

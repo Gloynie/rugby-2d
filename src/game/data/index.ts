@@ -5,12 +5,15 @@ import { PREMIERSHIP_TEAMS, SUPER_RUGBY_TEAMS, URC_TEAMS } from "./clubs";
 export { STADIUMS, getStadium } from "./stadiums";
 export type { TeamData } from "../types";
 
+import { applyRosterOverride } from "./rosterOverrides";
+
+// Roster overrides (rosterOverrides.ts) swap in an exact starting XV per team.
 export const TEAMS: TeamData[] = [
   ...INTERNATIONAL_TEAMS,
   ...URC_TEAMS,
   ...PREMIERSHIP_TEAMS,
   ...SUPER_RUGBY_TEAMS,
-];
+].map((t) => ({ ...t, players: applyRosterOverride(t.id, t.players) }));
 
 // Auto-pad player lists to at least 23 players for every team
 export const PADDED_TEAMS: TeamData[] = TEAMS.map((t) => {

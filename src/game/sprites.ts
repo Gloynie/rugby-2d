@@ -25,6 +25,29 @@ export interface Look {
   skin: string;
   hair: string | null;
   number: number;
+  /** Body build by position: width and height multipliers applied when the sprite is drawn. */
+  build: { w: number; h: number };
+}
+
+/**
+ * Physical build by shirt number. Props are broad and short, locks are the tallest men
+ * on the field, back-rowers are big all round, halves and wings are compact, and the
+ * fullback / centres sit in between.
+ */
+export function buildFor(number: number): { w: number; h: number } {
+  switch (number) {
+    case 1: case 3: return { w: 1.30, h: 0.96 };   // props: wide, low centre of gravity
+    case 2:         return { w: 1.22, h: 0.95 };   // hooker: stocky
+    case 4: case 5: return { w: 1.10, h: 1.18 };   // locks: tallest
+    case 6: case 7: return { w: 1.12, h: 1.08 };   // flankers: athletic, big
+    case 8:         return { w: 1.16, h: 1.12 };   // number eight: tall and heavy
+    case 9:         return { w: 0.88, h: 0.90 };   // scrum-half: smallest
+    case 10:        return { w: 0.94, h: 0.98 };   // fly-half: lean
+    case 11: case 14: return { w: 0.90, h: 0.97 }; // wings: compact and quick
+    case 12:        return { w: 1.04, h: 1.02 };   // inside centre: powerful
+    case 13:        return { w: 0.98, h: 1.04 };   // outside centre: rangy
+    default:        return { w: 0.96, h: 1.00 };   // fullback / replacements
+  }
 }
 
 const SKINS = ["#f3d1b0", "#e6b48c", "#c8865a", "#8d5a3b", "#5b3a29"];
@@ -65,7 +88,7 @@ export function makeLook(id: string, jersey: string, jersey2: string, number: nu
   const light = luminance(jersey) > 0.55;
   const shorts = light ? "#1f2937" : "#f1f5f9";
   const socks = light ? "#1f2937" : jersey;
-  return { id, jersey, jersey2, shorts, socks, skin, hair, number };
+  return { id, jersey, jersey2, shorts, socks, skin, hair, number, build: buildFor(number) };
 }
 
 export function teamLooks(teamKey: string, players: string[], jersey: string, jersey2: string): Look[] {

@@ -74,25 +74,41 @@ html[data-smooth="1"] .game-canvas {
   background: radial-gradient(ellipse at center, transparent 55%, rgba(0, 0, 0, 0.78) 100%);
 }
 
-/* ---------------- pixel chrome ---------------- */
+/* ---------------- pixel chrome (matches the main menu) ---------------- */
 .px-panel {
-  background: rgba(8, 12, 24, 0.9);
-  border: 2px solid #334155;
-  box-shadow: 4px 4px 0 #000;
+  position: relative;
+  background: rgba(3, 6, 14, 0.78);
+  border: 2px solid #000;
+  box-shadow: 3px 3px 0 #000, inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(2px);
+}
+.px-panel::before {
+  /* thin accent rail down the left edge, like the selected main-menu row */
+  content: "";
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: linear-gradient(180deg, rgba(74, 222, 128, 0.9), rgba(74, 222, 128, 0.15));
+  pointer-events: none;
 }
 .px-btn {
   font-family: "PressStart2P", ui-monospace, monospace;
   font-size: 10px;
   line-height: 1;
   text-transform: uppercase;
+  letter-spacing: 0.06em;
   padding: 11px 14px;
   border: 2px solid #000;
   box-shadow: 3px 3px 0 #000;
-  background: #1e293b;
-  color: #fff;
+  background: rgba(3, 6, 14, 0.82);
+  color: #e5e7eb;
   cursor: pointer;
   white-space: nowrap;
-  transition: transform 0.05s, filter 0.1s;
+  transition: transform 0.05s, filter 0.1s, background 0.1s;
+}
+.px-btn:hover:not(:disabled) {
+  background: rgba(15, 23, 42, 0.95);
+  color: #fff;
 }
 .px-btn:hover:not(:disabled) {
   filter: brightness(1.25);
@@ -133,8 +149,9 @@ html[data-smooth="1"] .game-canvas {
 .tile {
   position: relative;
   overflow: hidden;
-  border: 2px solid rgba(255, 255, 255, 0.16);
-  background: rgba(8, 12, 24, 0.72);
+  border: 2px solid #000;
+  background: rgba(3, 6, 14, 0.74);
+  box-shadow: 3px 3px 0 #000;
   cursor: pointer;
   transition: transform 0.12s, border-color 0.12s, box-shadow 0.12s;
   text-align: left;
@@ -341,4 +358,84 @@ html[data-smooth="1"] .game-canvas {
 @keyframes spotlightIn {
   from { opacity: 0; transform: translate(-33%, -50%) scale(0.97); }
   to   { opacity: 1; transform: translate(-33%, -50%) scale(1); }
+}
+
+
+/* ---------------- controller focus ring (visible on every screen) ---------------- */
+#screen-root :focus-visible,
+#screen-root button:focus,
+#screen-root [role="button"]:focus,
+#screen-root a:focus,
+#screen-root input:focus,
+#screen-root select:focus {
+  outline: 2px solid #facc15;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px rgba(250, 204, 21, 0.25), 3px 3px 0 #000;
+}
+
+/* ---------------- static backdrops for sub-screens (no animation) ---------------- */
+.backdrop-static {
+  background-color: #05070d;
+  background-image:
+    radial-gradient(circle at 18% 22%, rgba(74, 222, 128, 0.10), transparent 42%),
+    radial-gradient(circle at 84% 78%, rgba(250, 204, 21, 0.08), transparent 46%),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.022) 0 1px, transparent 1px 7px),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.022) 0 1px, transparent 1px 7px);
+}
+.backdrop-static::after {
+  /* soft pitch-stripe band across the bottom, purely decorative */
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 22%;
+  background: repeating-linear-gradient(90deg, rgba(31, 122, 55, 0.22) 0 48px, rgba(27, 108, 49, 0.22) 48px 96px);
+  mask-image: linear-gradient(180deg, transparent, #000 70%);
+  -webkit-mask-image: linear-gradient(180deg, transparent, #000 70%);
+  pointer-events: none;
+}
+
+/* ---------------- main-menu backdrop rotation ---------------- */
+.backdrop-fade-in  { animation: bdIn 1.4s ease both; }
+.backdrop-fade-out { animation: bdOut 1.4s ease both; }
+@keyframes bdIn  { from { opacity: 0; } to { opacity: 1; } }
+@keyframes bdOut { from { opacity: 1; } to { opacity: 0; } }
+
+/* ---------------- Ultimate Team walkout reveal ---------------- */
+.walkout-rays {
+  background:
+    repeating-conic-gradient(from 0deg at 50% 60%, rgba(250, 204, 21, 0.12) 0deg 6deg, transparent 6deg 14deg);
+  animation: raysSpin 14s linear infinite;
+  mask-image: radial-gradient(circle at 50% 60%, #000 20%, transparent 70%);
+  -webkit-mask-image: radial-gradient(circle at 50% 60%, #000 20%, transparent 70%);
+}
+.walkout-rays.elite {
+  background:
+    repeating-conic-gradient(from 0deg at 50% 60%, rgba(167, 139, 250, 0.16) 0deg 6deg, transparent 6deg 14deg);
+  animation-duration: 9s;
+}
+@keyframes raysSpin { to { transform: rotate(360deg); } }
+.walkout-floor {
+  background: linear-gradient(180deg, transparent, rgba(250, 204, 21, 0.10));
+}
+.walkout-flare {
+  background: radial-gradient(circle, #fff 0%, #facc15 35%, transparent 70%);
+  animation: flare 0.85s steps(6, end) both;
+}
+@keyframes flare {
+  0%   { transform: scale(0.2); opacity: 0; }
+  40%  { transform: scale(1.15); opacity: 1; }
+  100% { transform: scale(1); opacity: 0.9; }
+}
+.walkout-pop { animation: pop 0.5s steps(5, end) both; }
+@keyframes pop {
+  0%   { transform: translateY(14px) scale(0.92); opacity: 0; }
+  100% { transform: none; opacity: 1; }
+}
+.walkout-pulse { animation: wpulse 0.9s steps(2, end) infinite; }
+@keyframes wpulse { 50% { opacity: 0.35; } }
+.walkout-card-in { animation: cardIn 0.6s steps(6, end) both; }
+@keyframes cardIn {
+  0%   { transform: scale(0.85) rotate(-2deg); opacity: 0; }
+  60%  { transform: scale(1.04) rotate(0.5deg); opacity: 1; }
+  100% { transform: none; opacity: 1; }
 }

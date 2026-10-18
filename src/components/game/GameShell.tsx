@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { DEFAULT_BINDINGS, loadBindings, saveBindings, type Bindings } from "@/game/controls";
 import { findTeam } from "@/game/data";
-import { MenuPad } from "@/game/gamepad";
+import { useGamepadNav } from "@/game/useGamepadNav";
 import { music } from "@/game/music/player";
 import { initSettings } from "@/game/settings";
 import type { SessionUser } from "@/lib/auth";
@@ -23,7 +23,6 @@ import PlayerCareerHub from "./PlayerCareerHub";
 import OnlineFriendlies, { OnlineMatchRoom } from "./OnlineFriendlies";
 import UltimateTeam from "./UltimateTeam";
 import MainMenu from "./MainMenu";
-import MenuScene from "./MenuScene";
 import PlaySetup from "./PlaySetup";
 import ProfileScreen from "./ProfileScreen";
 import SquadsScreen from "./Squads";
@@ -102,18 +101,9 @@ export default function GameShell({ initialUser, initialScreen }: { initialUser:
   const go = useCallback((s: Screen) => setScreen(s), []);
   const back = useCallback(() => setScreen({ name: "menu" }), []);
 
-  // Controller "B" goes back from any sub-screen, mirroring Escape.
-  useEffect(() => {
-    if (inMatch || screen.name === "menu") return;
-    const reader = new MenuPad();
-    let raf = 0;
-    const tick = () => {
-      if (reader.poll().back) back();
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [inMatch, screen, back]);
+  // Controller navigation on every sub-screen: stick/d-pad moves focus, A clicks, B goes back.
+  // The main menu runs its own list navigation; matches read the pad through the engine.
+  useGamepadNav("#screen-root", back, !inMatch && screen.name !== "menu");
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
@@ -139,9 +129,7 @@ export default function GameShell({ initialUser, initialScreen }: { initialUser:
   return (
     <div className="fixed inset-0 select-none overflow-hidden bg-black text-white">
       {!inMatch && booted && screen.name !== "menu" && (
-        <div className="pointer-events-none absolute inset-0 opacity-45">
-          <MenuScene />
-        </div>
+        <div className="backdrop-static pointer-events-none absolute inset-0" aria-hidden />
       )}
       {!inMatch && (
         <>
@@ -172,7 +160,7 @@ export default function GameShell({ initialUser, initialScreen }: { initialUser:
           </div>
         )}
 
-        <div className={`min-h-0 flex-1 ${inMatch || screen.name === "menu" ? "overflow-hidden" : "overflow-y-auto scroll px-6 pb-2 pt-2 md:px-10"}`}>
+        <div id="screen-root" className={`min-h-0 flex-1 ${inMatch || screen.name === "menu" ? "overflow-hidden" : "overflow-y-auto scroll px-6 pb-2 pt-2 md:px-10"}`}>
           {!booted && <Loader />}
           {booted && screen.name === "menu" && <MainMenu key="menu" user={user} go={go} onLogout={logout} offline={offline} />}
           {booted && screen.name === "play" && (

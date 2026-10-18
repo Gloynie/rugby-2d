@@ -1648,6 +1648,7 @@ export class Renderer {
     skin: "#f3d1b0",
     hair: "#1a1a1a",
     number: 0,
+    build: { w: 1, h: 1 },
   };
 
   private drawEntities(m: RugbyEngine, snap: Snapshot, f: FrameOptions): void {
@@ -1695,7 +1696,13 @@ export class Renderer {
         b.fillRect(x - 6 * z, y - z, 12 * z, 2 * z);
       }
       if (v.lie >= 0) b.drawImage(spr, x - (LIE_S / 2) * z, y - (LIE_S / 2) * z, LIE_S * z, LIE_S * z);
-      else b.drawImage(spr, x - ANCHOR_X * z, y - FOOT_Y * z, SPR_W * z, SPR_H * z);
+      else {
+        const bw = look.build.w;
+        const bh = look.build.h;
+        const dw = SPR_W * z * bw;
+        const dh = SPR_H * z * bh;
+        b.drawImage(spr, x - ANCHOR_X * z * bw, y - FOOT_Y * z * bh, dw, dh);
+      }
       if (v.hasBall) this.drawBall(ball, v);
       const top = y - FOOT_Y * z;
       if (v.id === controlled) {

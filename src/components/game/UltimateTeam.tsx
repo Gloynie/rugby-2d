@@ -26,7 +26,7 @@ import {
 import type { Screen } from "./GameShell";
 import MatchReport from "./MatchReport";
 import MatchView from "./MatchView";
-import { Btn, Kicker, Panel, PlayerSprite, ScreenHeader, Scroll } from "./ui";
+import { Crest, Btn, Kicker, Panel, PlayerSprite, ScreenHeader, Scroll } from "./ui";
 
 type Tab = "club" | "squad" | "packs" | "challenges" | "season";
 type ClubSummary = { id: number; clubName: string; coins: number; rating: number; updatedAt: string };
@@ -163,11 +163,11 @@ export default function UltimateTeam({ user, bindings, go, setInMatch }: { user:
       <Scroll className="pr-2">
         {tab === "club" && <ClubHome club={club} onTab={setTab} />}
         {tab === "squad" && <SquadTab club={club} busy={busy} onSave={async (lineup, bench) => { const data = await commit({ action: "save-squad", lineup, bench }); if (data) setNotice("Your matchday 23 is saved."); }} onSell={async (id) => { const data = await commit({ action: "quick-sell", cardIds: [id] }); if (data) { audio.playCoin(); setNotice(`Sold for +${data.coinsEarned ?? 0} funds.`); } }} />}
-        {tab === "packs" && <PackTab club={club} busy={busy} onOpen={async (packId) => { const data = await commit({ action: "open-pack", packId }); const cards = data?.packedCards as UltimateCard[] | undefined; if (cards) { audio.playPackOpen(); if (cards.some((card) => card.ovr >= 84)) audio.playLegendary(); setPackCards(cards); setReveal(0); } }} onSell={async (id) => { const data = await commit({ action: "quick-sell", cardIds: [id] }); if (data) { audio.playCoin(); setNotice(`Sold for +${data.coinsEarned ?? 0} funds.`); } }} onSellDuplicates={async () => { const data = await commit({ action: "quick-sell-duplicates" }); if (data) { audio.playCoin(); setNotice(`Sold ${data.count ?? 0} duplicates for +${data.coinsEarned ?? 0} funds.`); } }} />}
+        {tab === "packs" && <PackTab club={club} busy={busy} onOpen={async (packId) => { const data = await commit({ action: "open-pack", packId }); const cards = data?.packedCards as UltimateCard[] | undefined; if (cards) { audio.playPackOpen(); const best = Math.max(...cards.map((card) => card.ovr)); if (best >= 88) audio.playLegendary(); else if (best >= 80) audio.playFanfare(); setPackCards(cards); setReveal(0); } }} onSell={async (id) => { const data = await commit({ action: "quick-sell", cardIds: [id] }); if (data) { audio.playCoin(); setNotice(`Sold for +${data.coinsEarned ?? 0} funds.`); } }} onSellDuplicates={async () => { const data = await commit({ action: "quick-sell-duplicates" }); if (data) { audio.playCoin(); setNotice(`Sold ${data.count ?? 0} duplicates for +${data.coinsEarned ?? 0} funds.`); } }} />}
         {tab === "challenges" && <Challenges club={club} busy={busy} onClaim={async (id) => { const data = await commit({ action: "claim-challenge", challengeId: id }); if (data) { audio.playCoin(); setNotice(`Challenge reward claimed: +${data.reward ?? 0} funds.`); } }} />}
         {tab === "season" && <SeasonTab club={club} busy={busy} onPlayNext={() => { const match = currentLeagueMatch(club); if (!match) return; const userHome = match.home === -1; const oppIndex = (match.home === -1 ? match.away : match.home) - 1; setBattle({ opponent: club.league!.opponents[oppIndex], mode: "league", userHome }); }} onOnline={async (username) => { const data = await inviteUltimate(clubId!, username); if (data.error) setError(data.error); else { setNotice(`Ultimate Team invite sent to ${data.recipient}. Open Online to track it.`); go({ name: "online" }); } }} />}
       </Scroll>
-      {packCards && <PackReveal cards={packCards} index={reveal} onNext={() => reveal < packCards.length - 1 ? setReveal(reveal + 1) : setPackCards(null)} />}
+      {packCards && <PackReveal key={packCards[reveal]?.instanceId ?? reveal} cards={packCards} index={reveal} onNext={() => reveal < packCards.length - 1 ? setReveal(reveal + 1) : setPackCards(null)} />}
     </div>
   );
 }
@@ -426,36 +426,113 @@ function PackTab({ club, busy, onOpen, onSell, onSellDuplicates }: { club: Ultim
 
 function PackReveal({ cards, index, onNext }: { cards: UltimateCard[]; index: number; onNext: () => void }) {
   const card = cards[index];
-  const walkout = card.ovr >= 80;
+  const tier: "plain" | "walkout" | "elite" = card.ovr >= 88 ? "elite" : card.ovr >= 80 ? "walkout" : "plain";
   const team = findTeam(card.teamId);
-  const jersey = team?.primary ?? (walkout ? "#6d28d9" : "#475569");
+  const jersey = team?.primary ?? (tier !== "plain" ? "#6d28d9" : "#475569");
   const jersey2 = team?.secondary ?? "#f8fafc";
-  const rarity = walkout ? "#facc15" : card.rarity === "gold" ? "#facc15" : card.rarity === "silver" ? "#94a3b8" : "#b7791f";
+  const rarity = tier === "elite" ? "#a78bfa" : tier === "walkout" ? "#facc15" : card.rarity === "gold" ? "#facc15" : card.rarity === "silver" ? "#94a3b8" : "#b7791f";
+
+  // Walkout stages: 0 flare, 1 country, 2 club, 3 position, 4 card. Plain cards jump to 4.
+  // Component is keyed by card at the call site, so initial state resets per card.
+  const [stage, setStage] = useState(tier === "plain" ? 4 : 0);
+  useEffect(() => {
+    if (tier === "plain") return;
+    // Elite pulls hold each beat a touch longer for extra tension.
+    const beat = tier === "elite" ? 1050 : 850;
+    const timers = [1, 2, 3, 4].map((st) => window.setTimeout(() => setStage(st), beat * st));
+    return () => timers.forEach((t) => window.clearTimeout(t));
+  }, [card.instanceId, tier]);
+
+  const skip = () => setStage(4);
+  const positionGroup = card.position <= 8 ? "FORWARD" : "BACK";
+
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/90 p-6">
-      <div className={`pack-reveal relative w-[600px] max-w-full p-8 text-center ${walkout ? "elite" : ""}`} style={{ borderColor: rarity }}>
-        <p className="text-sm uppercase tracking-[0.3em] text-slate-400">{walkout ? "Walkout! 80+ player" : "Pack reveal"}</p>
-        {walkout && <p className="blink mt-3 text-lg font-black uppercase text-yellow-300">Elite card incoming</p>}
-        <div className="mx-auto mt-5 flex w-full max-w-md items-center gap-6 rounded-xl border-4 bg-gradient-to-b from-slate-800 to-slate-950 p-6 text-left" style={{ borderColor: rarity }}>
-          <div className="grid h-40 w-32 shrink-0 place-items-end overflow-hidden rounded-md border-2 border-white/20 bg-black/35">
-            <PlayerSprite jersey={jersey} jersey2={jersey2} number={card.position} name={card.name} scale={4} view="front" />
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/92 p-6" onClick={stage < 4 ? skip : undefined}>
+      {tier !== "plain" && (
+        <>
+          <div className={`walkout-rays pointer-events-none absolute inset-0 ${tier === "elite" ? "elite" : ""}`} />
+          <div className="walkout-floor pointer-events-none absolute inset-x-0 bottom-0 h-1/3" />
+        </>
+      )}
+
+      {stage < 4 ? (
+        <div className="relative w-[640px] max-w-full text-center">
+          <p className="font-pixel text-[9px] uppercase tracking-[0.4em] text-slate-400">
+            {tier === "elite" ? "★ Elite walkout ★" : "Walkout"}
+          </p>
+          <p className="font-pixel walkout-pulse mt-2 text-[12px] uppercase text-yellow-300">{card.ovr >= 88 ? "Something special" : "80+ player incoming"}</p>
+
+          <div className="mt-8 flex min-h-[220px] items-center justify-center">
+            {stage === 0 && <span className="walkout-flare block h-40 w-40 rounded-full" />}
+            {stage === 1 && (
+              <div className="walkout-pop">
+                <p className="font-pixel text-[8px] uppercase tracking-[0.35em] text-slate-400">Nation</p>
+                <p className="font-pixel mt-3 text-[28px] uppercase leading-tight text-white drop-shadow-[4px_4px_0_#000]">{card.country}</p>
+              </div>
+            )}
+            {stage === 2 && (
+              <div className="walkout-pop flex flex-col items-center">
+                <p className="font-pixel text-[8px] uppercase tracking-[0.35em] text-slate-400">Club</p>
+                {team && <div className="mt-3"><Crest team={team} size={72} /></div>}
+                <p className="font-pixel mt-3 text-[16px] uppercase leading-tight text-white drop-shadow-[3px_3px_0_#000]">{card.clubName ?? card.teamName}</p>
+              </div>
+            )}
+            {stage === 3 && (
+              <div className="walkout-pop">
+                <p className="font-pixel text-[8px] uppercase tracking-[0.35em] text-slate-400">Position</p>
+                <p className="font-pixel mt-3 text-[26px] uppercase text-white drop-shadow-[4px_4px_0_#000]">{card.positionName}</p>
+                <p className="font-pixel mt-2 text-[9px] uppercase tracking-widest" style={{ color: rarity }}>#{card.position} · {positionGroup}</p>
+              </div>
+            )}
           </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-start justify-between">
-              <div><p className="text-5xl font-black" style={{ color: rarity }}>{card.ovr}</p><p className="mt-1 text-sm font-bold uppercase text-slate-400">{card.positionName}</p></div>
-              <span className="text-sm font-black uppercase" style={{ color: rarity }}>{card.rarity}</span>
+
+          <div className="mx-auto mt-6 flex w-48 gap-1">
+            {[1, 2, 3, 4].map((s) => (
+              <span key={s} className="h-1.5 flex-1" style={{ background: s <= stage ? rarity : "rgba(255,255,255,0.15)" }} />
+            ))}
+          </div>
+          <p className="font-pixel mt-4 text-[7px] uppercase tracking-widest text-slate-500">Click to skip</p>
+        </div>
+      ) : (
+        <div className={`relative w-[640px] max-w-full border-2 border-black bg-[#05070d]/95 p-7 text-center shadow-[4px_4px_0_#000] ${tier !== "plain" ? "walkout-card-in" : ""}`}>
+          <span className="absolute inset-x-0 top-0 h-1" style={{ background: rarity }} />
+          <p className="font-pixel text-[8px] uppercase tracking-[0.3em] text-slate-400">
+            {tier === "elite" ? "★ Elite ★" : tier === "walkout" ? "Walkout" : "Pack reveal"}
+          </p>
+
+          <div className="mx-auto mt-5 flex w-full max-w-lg items-stretch gap-5 border-2 bg-[#0b1626] p-5 text-left shadow-[3px_3px_0_#000]" style={{ borderColor: rarity }}>
+            <div className="relative grid w-36 shrink-0 place-items-end overflow-hidden border-2 border-black bg-black/40">
+              <span className="absolute inset-x-0 top-0 h-10" style={{ background: `linear-gradient(180deg, ${rarity}55, transparent)` }} />
+              <PlayerSprite jersey={jersey} jersey2={jersey2} number={card.position} name={card.name} scale={4} view="front" />
             </div>
-            <p className="mt-4 truncate text-2xl font-black uppercase">{card.name}</p>
-            <p className="mt-2 text-lg text-slate-200"><span className="text-slate-500">Club </span>{card.clubName ?? card.teamName}</p>
-            <p className="text-lg text-slate-200"><span className="text-slate-500">Country </span>{card.country}</p>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="font-pixel text-[36px] leading-none" style={{ color: rarity }}>{card.ovr}</p>
+                  <p className="font-pixel mt-1 text-[8px] uppercase text-slate-400">{card.positionName}</p>
+                </div>
+                <span className="font-pixel text-[8px] uppercase" style={{ color: rarity }}>{card.rarity}</span>
+              </div>
+              <p className="font-pixel mt-4 break-words text-[13px] uppercase leading-snug">{card.name}</p>
+              <div className="mt-3 flex items-center gap-2 border-t border-white/10 pt-2">
+                {team && <Crest team={team} size={22} />}
+                <p className="min-w-0 truncate text-[15px] text-slate-200">{card.clubName ?? card.teamName}</p>
+              </div>
+              <p className="mt-1 text-[15px] text-slate-200"><span className="text-slate-500">Nation </span>{card.country}</p>
+            </div>
           </div>
+
+          <div className="mx-auto mt-4 grid max-w-lg grid-cols-4 gap-1.5 text-left">
+            {Object.entries(card.ratings).map(([k, v]) => (
+              <span key={k} className="border-2 border-black bg-black/40 px-2 py-1.5 font-pixel text-[8px]">
+                <b style={{ color: rarity }}>{v}</b> <span className="text-slate-400">{k.toUpperCase().slice(0, 4)}</span>
+              </span>
+            ))}
+          </div>
+          <p className="font-pixel mt-5 text-[7px] uppercase tracking-widest text-slate-500">Card {index + 1} of {cards.length}</p>
+          <Btn primary className="mt-4" onClick={onNext}>{index < cards.length - 1 ? "Reveal next card" : "Add to club"}</Btn>
         </div>
-        <div className="mx-auto mt-4 grid max-w-md grid-cols-4 gap-1.5 text-left text-base">
-          {Object.entries(card.ratings).map(([k, v]) => <span key={k} className="rounded border border-white/10 bg-black/30 px-2 py-1"><b style={{ color: rarity }}>{v}</b> {k.toUpperCase().slice(0, 4)}</span>)}
-        </div>
-        <p className="mt-5 text-base text-slate-400">Card {index + 1} of {cards.length}</p>
-        <Btn primary className="mt-4" onClick={onNext}>{index < cards.length - 1 ? "Reveal next card" : "Add to club"}</Btn>
-      </div>
+      )}
     </div>
   );
 }

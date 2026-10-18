@@ -7,7 +7,7 @@ import { MenuPad, anyPadConnected } from "@/game/gamepad";
 import { music, useMusic } from "@/game/music/player";
 import type { SessionUser } from "@/lib/auth";
 import type { Screen } from "./GameShell";
-import MenuScene from "./MenuScene";
+import MenuBackdrops from "./MenuBackdrops";
 import NowPlaying from "./NowPlaying";
 import { Crest } from "./ui";
 
@@ -181,7 +181,7 @@ export default function MainMenu({
   return (
     <div className="relative h-full min-h-0 overflow-hidden">
       <div className="pointer-events-none absolute inset-0 -z-10">
-        <MenuScene jersey={fav.primary} jersey2={fav.secondary} playerName={fav.players[9] ?? fav.name} number={10} />
+        <MenuBackdrops jersey={fav.primary} jersey2={fav.secondary} playerName={fav.players[9] ?? fav.name} number={10} />
       </div>
 
       {/* ── top-left: utilities + wordmark ── */}
