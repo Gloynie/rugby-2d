@@ -304,3 +304,41 @@ html[data-smooth="1"] .game-canvas {
   background: radial-gradient(circle at 20% 20%, rgba(250, 204, 21, 0.18), transparent 55%),
     radial-gradient(circle at 85% 80%, rgba(34, 197, 94, 0.16), transparent 55%);
 }
+
+
+/* ---------------- loader animations ---------------- */
+.loader-rise {
+  animation: loaderRise 0.45s steps(5, end) both;
+}
+@keyframes loaderRise {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+.loader-shimmer {
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.45), transparent);
+  animation: loaderShimmer 1.3s linear infinite;
+}
+@keyframes loaderShimmer {
+  from { transform: translateX(-80px); }
+  to   { transform: translateX(460px); }
+}
+.loader-dots::after {
+  content: "";
+  animation: loaderDots 1.2s steps(4, end) infinite;
+}
+@keyframes loaderDots {
+  0%   { content: ""; }
+  25%  { content: "."; }
+  50%  { content: ".."; }
+  75%  { content: "..."; }
+  100% { content: ""; }
+}
+
+/* ---------------- menu spotlight entrance ---------------- */
+.menu-spotlight {
+  animation: spotlightIn 0.26s steps(4, end) both;
+}
+@keyframes spotlightIn {
+  from { opacity: 0; transform: translate(-33%, -50%) scale(0.97); }
+  to   { opacity: 1; transform: translate(-33%, -50%) scale(1); }
+}

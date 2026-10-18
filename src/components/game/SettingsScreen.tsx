@@ -45,12 +45,9 @@ export default function SettingsScreen({ onBack }: { onBack: () => void }) {
               <Btn primary={s.matchMusic === "quiet"} onClick={() => set({ matchMusic: "quiet" })}>Quiet in background</Btn>
               <Btn primary={s.matchMusic === "off"} onClick={() => set({ matchMusic: "off" })}>Silent</Btn>
             </div>
-            <div className="mt-3 flex gap-3">
-              <Btn primary={s.shuffle} onClick={() => set({ shuffle: !s.shuffle })}>
-                {s.shuffle ? "Shuffle on" : "Shuffle off"}
-              </Btn>
-            </div>
-            <p className="mt-2 text-base text-slate-400">Skip / shuffle from the now-playing bar.</p>
+            <p className="mt-3 text-base text-slate-400">
+              Songs always play on shuffle, and fade in and out around matches. Skip tracks from the now-playing bar.
+            </p>
           </Panel>
         </div>
       </Scroll>

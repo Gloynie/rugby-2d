@@ -7,7 +7,6 @@ export interface GameSettings {
   matchMusic: "off" | "quiet";
   /** Smooth (soft) upscaling instead of hard-edged pixels. */
   smooth: boolean;
-  shuffle: boolean;
 }
 
 export const SETTINGS_KEY = "pixelruggas.settings.v1";
@@ -18,7 +17,6 @@ export const DEFAULT_SETTINGS: GameSettings = {
   quality: "high",
   matchMusic: "off",
   smooth: false,
-  shuffle: false,
 };
 
 let cache: GameSettings | null = null;
@@ -36,7 +34,6 @@ function read(): GameSettings {
       quality: p.quality === "low" ? "low" : "high",
       matchMusic: p.matchMusic === "off" ? "off" : "quiet",
       smooth: typeof p.smooth === "boolean" ? p.smooth : DEFAULT_SETTINGS.smooth,
-      shuffle: typeof p.shuffle === "boolean" ? p.shuffle : DEFAULT_SETTINGS.shuffle,
     };
   } catch {
     return { ...DEFAULT_SETTINGS };

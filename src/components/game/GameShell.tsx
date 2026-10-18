@@ -48,16 +48,6 @@ export type Screen =
   | { name: "settings" }
   | { name: "music" };
 
-const TABS: { label: string; screen: Screen }[] = [
-  { label: "Home", screen: { name: "menu" } },
-  { label: "Play", screen: { name: "play" } },
-  { label: "Compete", screen: { name: "competitions" } },
-  { label: "Squads", screen: { name: "squads" } },
-  { label: "Controls", screen: { name: "controls" } },
-  { label: "Settings", screen: { name: "settings" } },
-  { label: "Ultimate", screen: { name: "ultimate" } },
-  { label: "Online", screen: { name: "online" } },
-];
 
 export default function GameShell({ initialUser, initialScreen }: { initialUser: SessionUser | null; initialScreen?: Screen }) {
   const [user, setUser] = useState<SessionUser | null>(initialUser);
@@ -90,12 +80,17 @@ export default function GameShell({ initialUser, initialScreen }: { initialUser:
   }, []);
 
   useEffect(() => {
-    setBindingsState(loadBindings());
     initSettings();
+    // Defer the state writes so the effect only schedules work rather than
+    // setting state synchronously during the commit.
+    const prime = window.setTimeout(() => setBindingsState(loadBindings()), 0);
     // Minimum 1.4s on screen so the player reads it, capped at the music ready promise + 400ms.
     const hardLimit = window.setTimeout(() => setBooted(true), 1400);
     void music.init().then(() => window.setTimeout(() => setBooted(true), 400));
-    return () => window.clearTimeout(hardLimit);
+    return () => {
+      window.clearTimeout(prime);
+      window.clearTimeout(hardLimit);
+    };
   }, []);
 
   const setBindings = useCallback((b: Bindings) => {
@@ -144,53 +139,23 @@ export default function GameShell({ initialUser, initialScreen }: { initialUser:
       )}
       <div className="relative z-10 flex h-full flex-col">
         {!inMatch && screen.name !== "menu" && (
-          <header className="flex items-center gap-6 px-6 pb-2 pt-3 md:px-10">
-            <button onClick={back} className="flex items-center gap-3 transition hover:brightness-125" aria-label="Return to PixelRuggas home">
-              <GameMark size={38} />
+          <div className="flex items-center gap-3 px-6 pt-4 md:px-10">
+            <button
+              onClick={back}
+              className="font-pixel flex items-center gap-2 border-2 border-black bg-black/60 px-3 py-2 text-[8px] uppercase tracking-widest text-slate-200 shadow-[3px_3px_0_#000] transition hover:text-white"
+              aria-label="Back to main menu"
+            >
+              <span aria-hidden>◀</span> Back
             </button>
-            <nav className="hidden items-center gap-1 md:flex">
-              {TABS.map((t) => {
-                const active = t.screen.name === screen.name || (t.screen.name === "competitions" && screen.name === "hub");
-                return (
-                  <button
-                    key={t.label}
-                    onClick={() => go(t.screen)}
-                    className={`font-pixel border-b-2 px-3 py-2 text-[10px] uppercase tracking-[0.2em] transition ${
-                      active ? "border-yellow-400 text-yellow-400" : "border-transparent text-slate-300 hover:text-white"
-                    }`}
-                  >
-                    {t.label}
-                  </button>
-                );
-              })}
-            </nav>
-            <div className="ml-auto flex items-center gap-3">
-              {user ? (
-                <>
-                  <button onClick={() => go({ name: "profile" })} className="flex items-center gap-2 border-2 border-black bg-[#0b1020]/90 py-1 pl-1 pr-3 shadow-[3px_3px_0_#000]">
-                    {fav ? (
-                      <Crest team={fav} size={24} />
-                    ) : (
-                      <span className="font-pixel grid h-7 w-7 place-items-center bg-yellow-400 text-[9px] text-black">{user.username.slice(0, 2).toUpperCase()}</span>
-                    )}
-                    <span className="font-pixel text-[10px]">{user.username.toUpperCase()}</span>
-                  </button>
-                  <button onClick={logout} className="font-pixel text-[9px] uppercase tracking-widest text-slate-400 hover:text-white">
-                    Sign out
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button onClick={() => go({ name: "profile", mode: "login" })} className="font-pixel text-[9px] uppercase tracking-widest text-slate-300 hover:text-white">
-                    Sign in
-                  </button>
-                  <button onClick={() => go({ name: "profile", mode: "register" })} className="px-btn primary !py-2 !text-[9px]">
-                    Create account
-                  </button>
-                </>
-              )}
-            </div>
-          </header>
+            {offline && (
+              <span
+                className="font-pixel border-2 border-yellow-400/70 bg-yellow-950/70 px-2 py-1.5 text-[7px] uppercase tracking-widest text-yellow-300"
+                title="No database connected. Quick matches work; accounts and competitions are disabled."
+              >
+                Guest mode
+              </span>
+            )}
+          </div>
         )}
 
         <div className={`min-h-0 flex-1 ${inMatch || screen.name === "menu" ? "overflow-hidden" : "overflow-y-auto scroll px-6 pb-2 pt-2 md:px-10"}`}>

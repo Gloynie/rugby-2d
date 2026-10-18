@@ -1,4 +1,5 @@
 import type { Bindings } from "./controls";
+import { GamepadReader, loadPadBindings, type PadBindings } from "./gamepad";
 import type { InputFrame } from "./types";
 
 const ALWAYS_PREVENT = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space", "Tab"]);
@@ -14,9 +15,14 @@ export class InputManager {
   private edges = new Set<string>();
   private kickReleased = false;
   private skipEdge = false;
+  private padKickWasHeld = false;
   private bindings: Bindings;
   private onPause: () => void;
   private onToggleHelp: () => void;
+  private pad = new GamepadReader();
+  private padBindings: PadBindings = loadPadBindings();
+  /** true while a controller is plugged in – used for on-screen prompts */
+  padConnected = false;
 
   constructor(bindings: Bindings, onPause: () => void, onToggleHelp: () => void) {
     this.bindings = bindings;
@@ -26,6 +32,10 @@ export class InputManager {
 
   setBindings(b: Bindings): void {
     this.bindings = b;
+  }
+
+  setPadBindings(b: PadBindings): void {
+    this.padBindings = b;
   }
 
   private isBound(code: string): boolean {
@@ -84,20 +94,37 @@ export class InputManager {
     const k = this.keys;
     const e = this.edges;
     const b = this.bindings;
+    // Controller is polled every frame and merged on top of the keyboard, so either works.
+    const g = this.pad.poll();
+    const pb = this.padBindings;
+    this.padConnected = g.connected;
+    const padHeld = (a: keyof PadBindings) => g.held.has(pb[a]);
+    const padTap = (a: keyof PadBindings) => g.pressed.has(pb[a]);
+
+    // The pad's pause / help buttons fire the same callbacks as the keyboard.
+    if (padTap("pause")) this.onPause();
+    if (padTap("help")) this.onToggleHelp();
+    // Releasing the kick button must still trigger the punt.
+    if (this.padKickWasHeld && !padHeld("kick")) this.kickReleased = true;
+    this.padKickWasHeld = padHeld("kick");
+    if (padTap("action")) this.skipEdge = true;
+
+    const keyX = (k.has(b.right) ? 1 : 0) - (k.has(b.left) ? 1 : 0);
+    const keyY = (k.has(b.down) ? 1 : 0) - (k.has(b.up) ? 1 : 0);
     const f: InputFrame = {
-      moveX: (k.has(b.right) ? 1 : 0) - (k.has(b.left) ? 1 : 0),
-      moveY: (k.has(b.down) ? 1 : 0) - (k.has(b.up) ? 1 : 0),
-      sprint: k.has(b.sprint),
-      kickHeld: k.has(b.kick),
-      passUp: e.has(b.passUp),
-      passDown: e.has(b.passDown),
+      moveX: keyX !== 0 ? keyX : g.moveX,
+      moveY: keyY !== 0 ? keyY : g.moveY,
+      sprint: k.has(b.sprint) || padHeld("sprint"),
+      kickHeld: k.has(b.kick) || padHeld("kick"),
+      passUp: e.has(b.passUp) || padTap("passUp"),
+      passDown: e.has(b.passDown) || padTap("passDown"),
       kickRelease: this.kickReleased,
-      dropGoal: e.has(b.dropGoal),
-      action: e.has(b.action),
-      switchPlayer: e.has(b.switch),
-      option1: e.has(b.opt1),
-      option2: e.has(b.opt2),
-      option3: e.has(b.opt3),
+      dropGoal: e.has(b.dropGoal) || padTap("dropGoal"),
+      action: e.has(b.action) || padTap("action"),
+      switchPlayer: e.has(b.switch) || padTap("switch"),
+      option1: e.has(b.opt1) || padTap("opt1"),
+      option2: e.has(b.opt2) || padTap("opt2"),
+      option3: e.has(b.opt3) || padTap("opt3"),
     };
     this.edges.clear();
     this.kickReleased = false;

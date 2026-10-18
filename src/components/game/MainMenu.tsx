@@ -3,23 +3,24 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as audio from "@/game/audio";
 import { COMPETITIONS, STADIUMS, TEAMS, findTeam, getTeam } from "@/game/data";
+import { anyPadConnected } from "@/game/gamepad";
 import { music, useMusic } from "@/game/music/player";
 import type { SessionUser } from "@/lib/auth";
 import type { Screen } from "./GameShell";
 import MenuScene from "./MenuScene";
 import NowPlaying from "./NowPlaying";
-import { Crest, Kbd } from "./ui";
+import { Crest } from "./ui";
 
 interface Item {
   id: string;
   title: string;
-  sub: string;
-  blurb: string;
+  mono: string;
+  headline: string;
+  features: string[];
+  cta: string;
   accent: string;
-  chips: string[];
   screen?: Screen;
   soon?: boolean;
-  tier: "featured" | "main" | "chip";
 }
 
 interface UserRecord {
@@ -28,68 +29,70 @@ interface UserRecord {
   losses: number;
 }
 
-export default function MainMenu({ user, go, onLogout, offline }: { user: SessionUser | null; go: (s: Screen) => void; onLogout?: () => void; offline?: boolean }) {
+export default function MainMenu({
+  user, go, onLogout, offline,
+}: { user: SessionUser | null; go: (s: Screen) => void; onLogout?: () => void; offline?: boolean }) {
   const items: Item[] = useMemo(
     () => [
       {
-        id: "kickoff", title: "Kick Off", sub: "Quick match", tier: "featured", accent: "#facc15",
-        blurb: "Pick any team, choose a stadium, win the toss and play full 80-minute rugby union.",
-        chips: ["Coin toss", "Scrums", "Replays"], screen: { name: "play" },
+        id: "kickoff", title: "Kick Off", mono: "KO", accent: "#facc15",
+        headline: "Dive straight into the action.",
+        features: ["Quick matches", "Any stadium", "Coin toss"],
+        cta: "Enter Kick Off", screen: { name: "play" },
       },
       {
-        id: "ultimate", title: "Ultimate Team", sub: "Build · Packs · Promotion", tier: "featured", accent: "#c084fc",
-        blurb: "Build a club from nothing. Open packs, sell spares and climb the divisions.",
-        chips: ["Packs", "Squad builder", "Seasons"], screen: { name: "ultimate" },
+        id: "ultimate", title: "Ultimate Team", mono: "UT", accent: "#c084fc",
+        headline: "Build your club from nothing to the top flight.",
+        features: ["Open packs", "Build a squad", "Win promotion"],
+        cta: "Enter Ultimate Team", screen: { name: "ultimate" },
       },
       {
-        id: "compete", title: "Competitions", sub: "World Cup · 6N · URC", tier: "main", accent: "#38bdf8",
-        blurb: "Six real competitions with full tables, knockouts and every fixture simulated.",
-        chips: COMPETITIONS.map((c) => c.short), screen: { name: "competitions" },
+        id: "compete", title: "Competitions", mono: "CP", accent: "#38bdf8",
+        headline: "Chase every trophy in the world game.",
+        features: ["World Cup", "Six Nations", "URC & more"],
+        cta: "Expand Competitions", screen: { name: "competitions" },
       },
       {
-        id: "online", title: "Online", sub: "Challenge a friend", tier: "main", accent: "#34d399",
-        blurb: "Invite another player by username and settle it in a live head-to-head.",
-        chips: ["Invite", "Live match"], screen: { name: "online" },
+        id: "online", title: "Online", mono: "ON", accent: "#34d399",
+        headline: "Settle it head-to-head with a friend.",
+        features: ["Invite by name", "Live matches"],
+        cta: "Expand Online", screen: { name: "online" },
       },
       {
-        id: "squads", title: "Squads", sub: "Every team & player", tier: "main", accent: "#fb923c",
-        blurb: "Browse all squads, ratings and the pixel stars of every side.",
-        chips: [`${TEAMS.length} teams`, "Ratings"], screen: { name: "squads" },
+        id: "squads", title: "Squads", mono: "SQ", accent: "#fb923c",
+        headline: "Know every side before you pick one.",
+        features: [`${TEAMS.length} teams`, "Full ratings"],
+        cta: "Browse Squads", screen: { name: "squads" },
       },
       {
-        id: "music", title: "Music", sub: "Your soundtrack", tier: "main", accent: "#f472b6",
-        blurb: "Play, skip and shuffle your songs in the menus — or add your own MP3s.",
-        chips: ["Play · skip", "Shuffle", "Add MP3s"], screen: { name: "music" },
+        id: "music", title: "Music", mono: "MX", accent: "#f472b6",
+        headline: "Your soundtrack, shuffled every session.",
+        features: ["Add your MP3s", "Always shuffling"],
+        cta: "Open Music", screen: { name: "music" },
       },
       {
-        id: "manager", title: "Manager", sub: "Coming soon", tier: "chip", accent: "#94a3b8", soon: true,
-        blurb: "Run a club through a full season. Coming soon.", chips: ["Soon"],
+        id: "manager", title: "Manager Career", mono: "MC", accent: "#94a3b8", soon: true,
+        headline: "Are you ready to lead a club on and off the pitch?",
+        features: ["Coming soon"], cta: "Coming soon",
       },
       {
-        id: "player", title: "Player Career", sub: "Coming soon", tier: "chip", accent: "#94a3b8", soon: true,
-        blurb: "Create a player and grow from rookie to legend. Coming soon.", chips: ["Soon"],
+        id: "player", title: "Player Career", mono: "PC", accent: "#94a3b8", soon: true,
+        headline: "Rise from academy rookie to national legend.",
+        features: ["Coming soon"], cta: "Coming soon",
       },
       {
-        id: "controls", title: "Controls", sub: "Rebind keys", tier: "chip", accent: "#60a5fa",
-        blurb: "Rebind every key to suit your keyboard.", chips: ["Presets"], screen: { name: "controls" },
+        id: "howto", title: "Learn To Play", mono: "LP", accent: "#fbbf24",
+        headline: "Master the laws, the controls and the dark arts.",
+        features: ["Controls", "Laws of the game"],
+        cta: "Open Learn To Play", screen: { name: "howto" },
       },
-      {
-        id: "settings", title: "Settings", sub: "Audio & look", tier: "chip", accent: "#cbd5e1",
-        blurb: "Volume, pixel sharpness and performance options.", chips: ["Volume", "Pixels"], screen: { name: "settings" },
-      },
-      {
-        id: "howto", title: "How To Play", sub: "Laws & tips", tier: "chip", accent: "#fbbf24",
-        blurb: "Controls, the laws of the game and tips for breaking the line.", chips: ["Laws"], screen: { name: "howto" },
-      },
-      user
-        ? { id: "record", title: "My Record", sub: "Career history", tier: "chip", accent: "#4ade80", blurb: "Your results, record and competitions.", chips: ["History"], screen: { name: "profile" } }
-        : { id: "signin", title: "Sign In", sub: "Save progress", tier: "chip", accent: "#4ade80", blurb: "Create an account to save results and your club.", chips: ["Free"], screen: { name: "profile", mode: "login" } },
     ],
-    [user],
+    [],
   );
 
   const [sel, setSel] = useState(0);
   const [record, setRecord] = useState<UserRecord | null>(null);
+  const [pad, setPad] = useState(false);
   const mounted = useRef(false);
   const item = items[sel];
   const m = useMusic();
@@ -102,6 +105,20 @@ export default function MainMenu({ user, go, onLogout, offline }: { user: Sessio
   useEffect(() => {
     void music.init();
     music.setContext("menu");
+  }, []);
+
+  // Show controller prompts only when a pad is actually plugged in.
+  useEffect(() => {
+    const check = () => setPad(anyPadConnected());
+    check();
+    const t = window.setInterval(check, 1500);
+    window.addEventListener("gamepadconnected", check);
+    window.addEventListener("gamepaddisconnected", check);
+    return () => {
+      window.clearInterval(t);
+      window.removeEventListener("gamepadconnected", check);
+      window.removeEventListener("gamepaddisconnected", check);
+    };
   }, []);
 
   useEffect(() => {
@@ -127,9 +144,9 @@ export default function MainMenu({ user, go, onLogout, offline }: { user: Sessio
     const h = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA")) return;
-      if (e.key === "ArrowDown" || e.key === "ArrowRight") setSel((s) => (s + 1) % items.length);
-      else if (e.key === "ArrowUp" || e.key === "ArrowLeft") setSel((s) => (s - 1 + items.length) % items.length);
-      else if (e.key === "Enter" || e.key === "NumpadEnter") {
+      if (e.key === "ArrowDown") setSel((s) => (s + 1) % items.length);
+      else if (e.key === "ArrowUp") setSel((s) => (s - 1 + items.length) % items.length);
+      else if (e.key === "Enter" || e.key === "NumpadEnter" || e.key === "ArrowRight") {
         e.preventDefault();
         open(items[sel]);
         return;
@@ -141,192 +158,201 @@ export default function MainMenu({ user, go, onLogout, offline }: { user: Sessio
   });
 
   const fav = findTeam(user?.favouriteTeam) ?? getTeam("rsa");
-  const featured = items.filter((i) => i.tier === "featured");
-  const mains = items.filter((i) => i.tier === "main");
-  const chips = items.filter((i) => i.tier === "chip");
-  const rowCls = (it: Item) => (items[sel].id === it.id ? "menu-row is-active" : "menu-row");
+  const played = record ? record.wins + record.draws + record.losses : 0;
+  const level = Math.max(1, Math.floor(played / 5) + 1);
+  const intoLevel = played % 5;
 
   return (
     <div className="relative h-full min-h-0 overflow-hidden">
-      {/* animated title scene */}
-      <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
+      <div className="pointer-events-none absolute inset-0 -z-10">
         <MenuScene jersey={fav.primary} jersey2={fav.secondary} playerName={fav.players[9] ?? fav.name} number={10} />
       </div>
 
-      <div className="grid h-full min-h-0 grid-cols-12 gap-0">
-        {/* ─────────── left rail (EA FC style) ─────────── */}
-        <aside className="fc-rail col-span-4 flex min-h-0 flex-col py-5 pl-7 pr-4 md:col-span-3 lg:col-span-3">
-          <div className="mb-4 flex items-center gap-2">
-            <Crest team={fav} size={28} />
-            <p className="font-pixel text-[10px] uppercase tracking-[0.2em] text-slate-200">PixelRuggas</p>
-          </div>
+      {/* ── top-left: utilities + wordmark ── */}
+      <div className="absolute left-6 top-5 z-20 flex items-start gap-4">
+        <div className="flex flex-col gap-2.5 pt-1">
+          <button
+            type="button"
+            onClick={() => go({ name: "settings" })}
+            title="Settings"
+            aria-label="Settings"
+            className="text-slate-400 transition hover:text-white"
+          >
+            <svg viewBox="0 0 24 24" className="h-4 w-4 fill-current"><path d="M12 8a4 4 0 100 8 4 4 0 000-8zm8.9 4a7 7 0 01-.1 1.2l2 1.6-2 3.4-2.4-1a7.4 7.4 0 01-2 1.2l-.4 2.6h-4l-.4-2.6a7.4 7.4 0 01-2-1.2l-2.4 1-2-3.4 2-1.6a7.6 7.6 0 010-2.4l-2-1.6 2-3.4 2.4 1a7.4 7.4 0 012-1.2L11.1 2h4l.4 2.6a7.4 7.4 0 012 1.2l2.4-1 2 3.4-2 1.6c.06.39.1.79.1 1.2z" /></svg>
+          </button>
+          <button
+            type="button"
+            onClick={() => go({ name: "controls" })}
+            title="Controls & accessibility"
+            aria-label="Controls and accessibility"
+            className="text-slate-400 transition hover:text-white"
+          >
+            <svg viewBox="0 0 24 24" className="h-4 w-4 fill-current"><path d="M12 2a2 2 0 110 4 2 2 0 010-4zm9 5.5l-.4 1.6-5.1 1v3.3l2.2 7-1.6.6-2.6-7h-3l-2.6 7-1.6-.6 2.2-7V10.1l-5.1-1L3 7.5l6.4 1.2h5.2L21 7.5z" /></svg>
+          </button>
+        </div>
+        <div>
+          <p className="font-pixel text-base uppercase leading-none tracking-[0.12em] text-white drop-shadow-[3px_3px_0_#000]">
+            Pixel<span className="text-green-400">Ruggas</span>
+          </p>
+          <p className="mt-1.5 font-pixel text-[6px] uppercase tracking-[0.3em] text-slate-500">Pixel rugby union</p>
+        </div>
+      </div>
 
-          <div className="flex-1 space-y-1.5 overflow-y-auto scroll pr-1">
-            {featured.map((it) => (
-              <button
-                key={it.id}
-                type="button"
-                onMouseEnter={() => setSel(items.indexOf(it))}
-                onClick={() => open(it)}
-                className={`${rowCls(it)} py-3`}
-                style={{ ["--accent" as string]: it.accent }}
-              >
-                <span className="menu-bar" />
-                <span className="min-w-0 flex-1 text-left">
-                  <span className="font-pixel block truncate text-[12px] uppercase leading-tight">{it.title}</span>
-                  <span className="mt-0.5 block truncate text-[14px] leading-none text-slate-400">{it.sub}</span>
-                </span>
-              </button>
-            ))}
-
-            {mains.map((it) => (
-              <button
-                key={it.id}
-                type="button"
-                onMouseEnter={() => setSel(items.indexOf(it))}
-                onClick={() => open(it)}
-                className={`${rowCls(it)} py-2`}
-                style={{ ["--accent" as string]: it.accent }}
-              >
-                <span className="menu-bar" />
-                <span className="min-w-0 flex-1 text-left">
-                  <span className="font-pixel block truncate text-[10px] uppercase leading-tight">{it.title}</span>
-                </span>
-              </button>
-            ))}
-
-            <div className="grid grid-cols-2 gap-1.5 pt-1">
-              {chips.map((it) => (
-                <button
-                  key={it.id}
-                  type="button"
-                  onMouseEnter={() => setSel(items.indexOf(it))}
-                  onClick={() => open(it)}
-                  className={`${rowCls(it)} menu-chip py-1.5 ${it.soon ? "opacity-70" : ""}`}
-                  style={{ ["--accent" as string]: it.accent }}
-                  aria-disabled={it.soon}
-                >
-                  <span className="menu-bar" />
-                  <span className="font-pixel min-w-0 flex-1 truncate text-left text-[7px] uppercase leading-tight">{it.title}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        </aside>
-
-        {/* ─────────── hero panel ─────────── */}
-        <section className="fc-hero col-span-8 flex min-h-0 flex-col justify-between gap-3 px-8 py-5 md:col-span-9 lg:col-span-9">
-          <header className="flex items-start justify-between gap-3">
-            <div>
-              <p className="font-pixel text-[8px] uppercase tracking-[0.25em] text-yellow-400">
-                {user ? `Welcome back, ${user.username}` : "Welcome to PixelRuggas"}
-              </p>
-              <p className="mt-1 text-[15px] text-slate-300">
-                {record ? (
-                  <>
-                    Career · <span className="text-green-400">{record.wins}W</span> <span className="text-slate-300">{record.draws}D</span>{" "}
-                    <span className="text-red-400">{record.losses}L</span>
-                  </>
-                ) : (
-                  <>{TEAMS.length} teams · {COMPETITIONS.length} competitions · {STADIUMS.length} stadiums</>
-                )}
-              </p>
-            </div>
-            <div className="flex items-center gap-2">
-              {offline && (
-                <span
-                  className="font-pixel border-2 border-yellow-400/70 bg-yellow-950/70 px-2 py-1 text-[7px] uppercase tracking-widest text-yellow-300"
-                  title="No database connected. Quick matches work; accounts and competitions are disabled."
-                >
-                  Guest mode
-                </span>
-              )}
-              {user ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => go({ name: "profile" })}
-                    className="flex items-center gap-2 border-2 border-black bg-black/65 py-1 pl-1 pr-2.5 shadow-[3px_3px_0_#000] hover:brightness-125"
-                    title="My record"
-                  >
-                    <Crest team={fav} size={22} />
-                    <span className="font-pixel text-[8px] uppercase text-slate-200">{user.username}</span>
-                  </button>
-                  {onLogout && (
-                    <button type="button" onClick={onLogout} className="font-pixel border-2 border-black bg-black/65 px-2 py-2 text-[7px] uppercase tracking-widest text-slate-300 shadow-[3px_3px_0_#000] hover:text-white">
-                      Sign out
-                    </button>
-                  )}
-                </>
-              ) : (
-                <>
-                  <button type="button" onClick={() => go({ name: "profile", mode: "login" })} className="font-pixel border-2 border-black bg-black/65 px-2.5 py-2 text-[7px] uppercase tracking-widest text-slate-200 shadow-[3px_3px_0_#000] hover:text-white">
-                    Sign in
-                  </button>
-                  <button type="button" onClick={() => go({ name: "profile", mode: "register" })} className="px-btn primary !px-2.5 !py-2 !text-[7px]">
-                    Create account
-                  </button>
-                </>
-              )}
-            </div>
-          </header>
-
-          <div className="flex min-h-0 flex-1 items-stretch gap-4">
-            <div key={item.id} className="slide-in flex min-w-0 flex-1 flex-col justify-center">
-              <p className="font-pixel text-[8px] uppercase tracking-[0.25em]" style={{ color: item.accent }}>
-                {item.soon ? "Coming soon" : item.tier === "featured" ? "Featured" : "Menu"}
-              </p>
-              <h2 className="font-pixel mt-2 text-3xl uppercase leading-tight drop-shadow-[3px_3px_0_#000] md:text-5xl">{item.title}</h2>
-              <p className="mt-2 max-w-xl text-[18px] leading-snug text-slate-200">{item.blurb}</p>
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                {item.chips.map((c) => (
-                  <span key={c} className="font-pixel border-2 border-white/20 bg-black/55 px-2 py-1 text-[7px] uppercase text-slate-200">
-                    {c}
-                  </span>
-                ))}
-              </div>
-              <div className="mt-3 flex flex-wrap items-center gap-3">
-                {item.soon ? (
-                  <span className="font-pixel border-2 border-yellow-400/60 bg-yellow-400/10 px-4 py-3 text-[10px] uppercase text-yellow-300">🔒 Coming soon</span>
-                ) : (
-                  <button type="button" onClick={() => open(item)} className="px-btn primary !px-6 !py-3.5 !text-[12px]">
-                    {item.id === "kickoff" ? "Enter Kick Off" : item.id === "ultimate" ? "Enter club" : "Open"} ▶
-                  </button>
-                )}
-                <span className="hidden text-slate-400 md:inline">
-                  <Kbd>↑</Kbd><Kbd>↓</Kbd> browse · <Kbd>ENTER</Kbd> select
-                </span>
-              </div>
-            </div>
-
-            <div className="hidden w-44 flex-col gap-2 lg:flex">
-              {[
-                ["Teams", String(TEAMS.length)],
-                ["Comps", String(COMPETITIONS.length)],
-                ["Grounds", String(STADIUMS.length)],
-              ].map(([k, v]) => (
-                <div key={k} className="border-2 border-black bg-black/65 px-3 py-1.5 shadow-[3px_3px_0_#000]">
-                  <p className="font-pixel text-[12px] leading-none text-yellow-300">{v}</p>
-                  <p className="font-pixel mt-1 text-[6px] uppercase tracking-[0.2em] text-slate-400">{k}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <footer className="flex items-center justify-between gap-3">
-            <span className="font-pixel text-[7px] uppercase tracking-widest text-slate-500">
-              PixelRuggas · pixel rugby union
+      {/* ── top-right: account ── */}
+      <div className="absolute right-6 top-5 z-20 flex items-center gap-3">
+        {offline && (
+          <span
+            className="font-pixel border border-yellow-400/50 bg-yellow-950/60 px-2 py-1 text-[7px] uppercase tracking-widest text-yellow-300"
+            title="No database connected. Quick matches work; accounts and competitions are disabled."
+          >
+            Guest
+          </span>
+        )}
+        {user ? (
+          <>
+            <button type="button" onClick={() => go({ name: "profile" })} className="flex items-center gap-2 transition hover:brightness-125" title="My record">
+              <span className="font-pixel text-[9px] uppercase tracking-wider text-slate-200">{user.username}</span>
+              <Crest team={fav} size={20} />
+            </button>
+            <span className="h-5 w-px bg-white/20" />
+            <span className="font-pixel text-[8px] uppercase tracking-wider text-slate-400">Lv {level}</span>
+            <span className="flex h-1.5 w-16 overflow-hidden bg-white/15">
+              <span className="h-full bg-green-400" style={{ width: `${(intoLevel / 5) * 100}%` }} />
             </span>
-            <NowPlaying onOpen={() => go({ name: "music" })} />
-          </footer>
-        </section>
+            <span className="font-pixel text-[8px] text-slate-500">{record ? `${record.wins}W` : "0W"}</span>
+            {onLogout && (
+              <button type="button" onClick={onLogout} className="font-pixel text-[7px] uppercase tracking-widest text-slate-500 transition hover:text-white">
+                Sign out
+              </button>
+            )}
+          </>
+        ) : (
+          <>
+            <button type="button" onClick={() => go({ name: "profile", mode: "login" })} className="font-pixel text-[8px] uppercase tracking-widest text-slate-300 transition hover:text-white">
+              Sign in
+            </button>
+            <button type="button" onClick={() => go({ name: "profile", mode: "register" })} className="px-btn primary !px-2.5 !py-1.5 !text-[7px]">
+              Create account
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* ── left: mode list ── */}
+      <nav className="absolute left-7 top-1/2 z-20 w-[280px] -translate-y-1/2">
+        <ul className="space-y-1">
+          {items.map((it, i) => {
+            const active = i === sel;
+            return (
+              <li key={it.id}>
+                <button
+                  type="button"
+                  onMouseEnter={() => setSel(i)}
+                  onClick={() => (active ? open(it) : setSel(i))}
+                  className={`group flex w-full items-center gap-2 py-1 text-left transition-all duration-150 ${
+                    active ? "translate-x-1.5" : ""
+                  }`}
+                >
+                  <span
+                    className="block w-1 shrink-0 transition-all duration-150"
+                    style={{ height: active ? 22 : 0, background: it.accent }}
+                  />
+                  <span
+                    className={`font-pixel uppercase leading-tight transition-all duration-150 ${
+                      active
+                        ? "text-[15px] text-white drop-shadow-[2px_2px_0_#000]"
+                        : it.soon
+                          ? "text-[11px] text-slate-600"
+                          : "text-[11px] text-slate-400 group-hover:text-slate-200"
+                    }`}
+                  >
+                    {it.title}
+                  </span>
+                  {it.soon && (
+                    <span className="font-pixel text-[6px] uppercase tracking-widest text-yellow-500/70">Soon</span>
+                  )}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </nav>
+
+      {/* ── centre: selected mode ── */}
+      <div key={item.id} className="menu-spotlight absolute left-1/2 top-1/2 z-10 w-[420px] max-w-[46vw] -translate-x-1/3 -translate-y-1/2 text-center">
+        <div
+          className="mx-auto grid h-16 w-16 place-items-center rounded-full border-2"
+          style={{ borderColor: `${item.accent}dd`, background: "rgba(3,6,14,0.45)" }}
+        >
+          <span className="font-pixel text-base" style={{ color: item.accent }}>{item.mono}</span>
+        </div>
+        <h2 className="mt-4 font-pixel text-[13px] uppercase leading-relaxed text-white drop-shadow-[2px_2px_0_#000] md:text-[15px]">
+          {item.headline}
+        </h2>
+        <p className="mt-3 font-pixel text-[7px] uppercase tracking-[0.18em] text-slate-300">
+          {item.features.join("  ·  ")}
+        </p>
+        <div className="mt-5 flex justify-center">
+          {item.soon ? (
+            <span className="font-pixel rounded-full border border-yellow-400/50 bg-yellow-400/10 px-5 py-2.5 text-[8px] uppercase tracking-widest text-yellow-300">
+              Coming soon
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={() => open(item)}
+              className="font-pixel flex items-center gap-2 rounded-full border border-white/30 bg-black/45 px-5 py-2.5 text-[8px] uppercase tracking-widest text-white backdrop-blur transition hover:border-white/70 hover:bg-black/70"
+            >
+              <span className="grid h-4 w-4 place-items-center rounded-full bg-white text-[6px] text-black">
+                {pad ? "A" : "↵"}
+              </span>
+              {item.cta}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* ── bottom prompt bar ── */}
+      <div className="absolute inset-x-0 bottom-0 z-20 flex items-center gap-5 px-7 py-3.5">
+        <Prompt badge={pad ? "A" : "↵"} label="Select" />
+        <Prompt badge={pad ? "B" : "ESC"} label="Back" />
+        <Prompt badge={pad ? "LS" : "↑↓"} label="Browse" />
+        <button
+          type="button"
+          onClick={() => go({ name: "controls" })}
+          className="font-pixel text-[7px] uppercase tracking-widest text-slate-400 transition hover:text-white"
+        >
+          Controls / Accessibility
+        </button>
+        <div className="ml-auto flex items-center gap-3">
+          {pad && (
+            <span className="font-pixel border border-green-400/40 bg-green-950/40 px-2 py-1 text-[6px] uppercase tracking-widest text-green-300">
+              Controller
+            </span>
+          )}
+          <span className="font-pixel text-[6px] uppercase tracking-widest text-slate-500">
+            {COMPETITIONS.length} comps · {STADIUMS.length} grounds
+          </span>
+          <NowPlaying onOpen={() => go({ name: "music" })} />
+        </div>
       </div>
 
       {m.needsGesture && (
-        <p className="font-pixel pointer-events-none absolute bottom-2 right-8 text-[7px] uppercase tracking-widest text-yellow-300/80">
+        <p className="font-pixel pointer-events-none absolute bottom-14 right-7 z-20 text-[7px] uppercase tracking-widest text-yellow-300/80">
           Click anywhere to start the music
         </p>
       )}
     </div>
+  );
+}
+
+function Prompt({ badge, label }: { badge: string; label: string }) {
+  return (
+    <span className="flex items-center gap-1.5">
+      <span className="font-pixel grid h-5 min-w-[20px] place-items-center rounded-full border border-white/40 bg-black/50 px-1 text-[6px] text-white">
+        {badge}
+      </span>
+      <span className="font-pixel text-[7px] uppercase tracking-widest text-slate-400">{label}</span>
+    </span>
   );
 }

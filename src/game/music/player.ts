@@ -70,6 +70,7 @@ class MusicPlayer {
   private urls: string[] = [];
   private initPromise: Promise<void> | null = null;
   private lastEmit = 0;
+  private fadeRaf: number | null = null;
   private subs = new Set<() => void>();
   private snap: MusicSnapshot = EMPTY;
 
@@ -302,7 +303,7 @@ class MusicPlayer {
     const n = this.tracks.length;
     if (n === 0) return -1;
     if (n === 1) return 0;
-    if (currentSettings().shuffle) {
+    if (true) {
       const avoid = new Set(this.recent.slice(-Math.min(3, n - 1)));
       avoid.add(this.index);
       let c = this.randomIndex();
@@ -326,9 +327,10 @@ class MusicPlayer {
     this.recent.push(i);
     if (this.recent.length > 60) this.recent.shift();
     if (el.getAttribute("src") !== t.src) el.src = t.src;
-    this.applyVolume();
     el.currentTime = 0;
-    void el.play().catch(() => this.emit());
+    // Start silent and fade up so songs never slam in.
+    this.setElementVolume(0);
+    void el.play().then(() => this.fadeTo(this.targetVolume(), 800)).catch(() => this.emit());
     this.setMediaSession(t);
     this.emit();
   }
@@ -342,7 +344,7 @@ class MusicPlayer {
       return;
     }
     if (this.index < 0 || !this.el?.getAttribute("src")) {
-      this.playIndex(currentSettings().shuffle ? this.randomIndex() : Math.max(0, this.index), true);
+      this.playIndex(true ? this.randomIndex() : Math.max(0, this.index), true);
       return;
     }
     void this.ensureElement().play().catch(() => undefined);
@@ -351,8 +353,11 @@ class MusicPlayer {
 
   pause(): void {
     this.userPaused = true;
-    this.el?.pause();
-    this.stopSynth();
+    this.fadeTo(0, 400, () => {
+      this.el?.pause();
+      this.stopSynth();
+      this.emit();
+    });
     this.emit();
   }
 
@@ -391,9 +396,8 @@ class MusicPlayer {
     }
   }
 
-  setShuffle(v: boolean): void {
-    updateSettings({ shuffle: v });
-  }
+  /** Shuffle is always on – kept so older callers do not break. */
+  setShuffle(_v: boolean): void { /* always shuffling */ }
 
   // ---------------------------------------------------------------- context (menu vs match)
   setContext(ctx: MusicContext): void {
@@ -402,30 +406,81 @@ class MusicPlayer {
   }
 
   private applyContext(): void {
-    this.applyVolume();
     const s = currentSettings();
     const silent = this.context === "match" && (s.matchMusic === "off" || this.tracks.length === 0);
     const active = this.synthOn || (!!this.el && !this.el.paused);
     if (silent) {
       if (active) {
         this.suspended = true;
-        this.el?.pause();
-        this.stopSynth();
+        // Fade out over ~0.7s, then pause – no abrupt cut when a match kicks off.
+        this.fadeTo(0, 700, () => {
+          this.el?.pause();
+          this.stopSynth();
+        });
       }
     } else if (this.suspended) {
       this.suspended = false;
-      if (!this.userPaused) this.maybeAutoStart();
+      if (!this.userPaused) {
+        this.setElementVolume(0);
+        this.maybeAutoStart();
+        this.fadeTo(this.targetVolume(), 900);
+      }
     } else {
       this.maybeAutoStart();
+      this.fadeTo(this.targetVolume(), 600);
     }
+    audio.applyAudioSettings({ musicVolume: this.targetVolume(), sfxVolume: s.sfxVolume });
     this.emit();
+  }
+
+  /** Volume the music should settle at for the current context. */
+  private targetVolume(): number {
+    const s = currentSettings();
+    const factor = this.context === "match" ? MATCH_VOLUME : 1;
+    return Math.min(1, Math.max(0, s.musicVolume * factor));
+  }
+
+  private setElementVolume(v: number): void {
+    if (this.el) this.el.volume = Math.min(1, Math.max(0, v));
+  }
+
+  /** Smoothly ramp the element volume. Any in-flight fade is cancelled. */
+  private fadeTo(to: number, ms: number, done?: () => void): void {
+    if (this.fadeRaf !== null) {
+      cancelAnimationFrame(this.fadeRaf);
+      this.fadeRaf = null;
+    }
+    const el = this.el;
+    if (!el) {
+      done?.();
+      return;
+    }
+    const from = el.volume;
+    if (ms <= 0 || Math.abs(to - from) < 0.01) {
+      this.setElementVolume(to);
+      done?.();
+      return;
+    }
+    const start = performance.now();
+    const step = (now: number) => {
+      const k = Math.min(1, (now - start) / ms);
+      // ease-in-out so the ramp feels natural rather than linear
+      const e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+      this.setElementVolume(from + (to - from) * e);
+      if (k < 1) {
+        this.fadeRaf = requestAnimationFrame(step);
+      } else {
+        this.fadeRaf = null;
+        done?.();
+      }
+    };
+    this.fadeRaf = requestAnimationFrame(step);
   }
 
   private applyVolume(): void {
     const s = currentSettings();
-    const factor = this.context === "match" ? MATCH_VOLUME : 1;
-    if (this.el) this.el.volume = Math.min(1, Math.max(0, s.musicVolume * factor));
-    audio.applyAudioSettings({ musicVolume: s.musicVolume * factor, sfxVolume: s.sfxVolume });
+    this.setElementVolume(this.targetVolume());
+    audio.applyAudioSettings({ musicVolume: this.targetVolume(), sfxVolume: s.sfxVolume });
   }
 
   private maybeAutoStart(): void {
@@ -446,7 +501,7 @@ class MusicPlayer {
       this.emit();
       return;
     }
-    this.playIndex(currentSettings().shuffle ? this.randomIndex() : 0, false);
+    this.playIndex(true ? this.randomIndex() : 0, false);
   }
 
   private startSynth(): void {
@@ -486,7 +541,7 @@ class MusicPlayer {
       playing: this.synthOn || (!!el && !el.paused && !el.ended),
       time: el?.currentTime ?? 0,
       duration: el && Number.isFinite(el.duration) ? el.duration : 0,
-      shuffle: currentSettings().shuffle,
+      shuffle: true,
       context: this.context,
       synth: this.synthOn || (this.ready && this.tracks.length === 0),
       needsGesture: !this.started,
