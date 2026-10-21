@@ -1,7 +1,7 @@
 import type { RugbyEngine } from "./engine";
 import { keyLabel, type Bindings } from "./controls";
 import type { FrameOptions, PlayerVisual, Renderer, Snapshot } from "./render";
-import { CameraShots, type FeaturedPlayer } from "./camerashots";
+import { CameraShots } from "./camerashots";
 import type { Stadium, TeamIndex, Vec2 } from "./types";
 
 export type Scene = "intro" | "toss" | "tossChoice" | "live" | "try" | "replay" | "halftime" | "fulltime" | "scrum";
@@ -95,16 +95,6 @@ export class Director {
 
   /** Record what the renderer drew this frame so we can replay it later. */
   private replayLabel = "LAST PLAY";
-
-  /** Build the cinematic feature for an engine player (null if the renderer has no look yet). */
-  private feature(r: Renderer, id: number | null): FeaturedPlayer | null {
-    if (id === null) return null;
-    const p = this.engine.players[id];
-    if (!p) return null;
-    const look = r.lookFor(p.team, p.number);
-    if (!look) return null;
-    return { look, name: p.name, number: p.number, teamColor: this.engine.teams[p.team].color };
-  }
   setReplayLabel(label: string): void { this.replayLabel = label; }
 
   record(snap: Snapshot, dt: number): void {
@@ -354,14 +344,7 @@ export class Director {
         }
         if (scorer) {
           const teamColor = e.teams[scorer.team].color;
-          const tt = this.t;
-          const sid = scorer.id;
-          f.drawOverlay = (r) => {
-            // Cut 1: tunnel-cam portrait of the scorer. Cut 2: wide celebration.
-            const fp = this.feature(r, sid);
-            if (fp && tt < 1.0 && !this.opts.attract) CameraShots.portrait(r, fp, tt, "TRY!", `${scorer.name} · ${e.teams[scorer.team].data.name}`);
-            else CameraShots.celebration(r, scorer.name, teamColor);
-          };
+          f.drawOverlay = (r) => { CameraShots.celebration(r, scorer.name, teamColor); };
         } else f.drawOverlay = (r) => this.drawTry(r);
         if (this.t > 2.2 || (skip && !this.opts.attract)) this.startReplay();
         break;
@@ -378,52 +361,31 @@ export class Director {
         f.hideHUD = true;
         f.letterbox = 1;
         f.frozen = true;
-        {
-          const tt = this.t;
-          const sid = e.tryScorer;
-          f.drawOverlay = (r) => {
-            const h = e.teams[0].data.short;
-            const a = e.teams[1].data.short;
-            const fp = this.feature(r, sid);
-            if (fp && tt < 0.9 && !this.opts.attract) CameraShots.sideline(r, fp, tt, "Replay · touchline cam");
-            else CameraShots.replay(r, this.replayLabel ?? "LAST PLAY", h, a, e.score[0], e.score[1], e.gameMinute());
-          };
-        }
+        f.drawOverlay = (r) => {
+          const h = e.teams[0].data.short;
+          const a = e.teams[1].data.short;
+          CameraShots.replay(r, this.replayLabel ?? "LAST PLAY", h, a, e.score[0], e.score[1], e.gameMinute());
+        };
         if (this.replayT >= this.replayEnd || (skip && !this.opts.attract)) this.endReplay();
         break;
       }
       case "halftime":
       case "fulltime": {
-        const isHalf = this.scene === "halftime";
+        const k = clamp(this.t / 6, 0, 1);
+        f.camTarget = { x: lerp(25, 95, k), y: 35 + Math.sin(this.t * 0.6) * 6 };
         f.freeCam = true;
+        f.camSpeed = 2.5;
         f.hideHUD = true;
         f.letterbox = 1;
         f.frozen = true;
-        // Stage A (0–2.4s): score card over a slow pan. Stage B: full stats board over a
-        // different angle – a high wide shot that drifts, like a broadcast half-time.
-        const statsStart = 2.4;
-        const inStats = this.t >= statsStart && !this.opts.attract;
-        if (!inStats) {
-          const k = clamp(this.t / 6, 0, 1);
-          f.camTarget = { x: lerp(25, 95, k), y: 35 + Math.sin(this.t * 0.6) * 6 };
-          f.camSpeed = 2.5;
-          f.zoom = 1;
-          f.drawOverlay = (r) => this.drawScoreCard(r, isHalf ? "HALF TIME" : "FULL TIME");
-        } else {
-          const k2 = clamp((this.t - statsStart) / 8, 0, 1);
-          f.zoom = 0.78;
-          f.camSpeed = 1.6;
-          f.camTarget = { x: lerp(70, 50, k2), y: 35 + Math.sin(this.t * 0.4) * 4 };
-          f.drawOverlay = (r) => this.drawStatsBoard(r, isHalf ? "HALF TIME STATS" : "FULL TIME STATS", this.t - statsStart);
-        }
-        if (!isHalf) {
+        if (this.scene === "fulltime") {
           this.flash = Math.max(this.flash, 0.6);
           f.flash = this.flash;
         }
-        // Give the stats board time to be read; action key skips any stage.
-        const length = this.opts.attract ? 4.5 : isHalf ? 9.5 : 10.5;
+        f.drawOverlay = (r) => this.drawScoreCard(r, this.scene === "halftime" ? "HALF TIME" : "FULL TIME");
+        const length = this.scene === "halftime" ? 4.5 : 5.5;
         if (this.t > length || (skip && this.t > 0.6 && !this.opts.attract)) {
-          if (isHalf) {
+          if (this.scene === "halftime") {
             e.phaseTimer = 0.01;
             this.scene = "live";
           } else this.done = true;
@@ -680,67 +642,6 @@ export class Director {
     r.text("REPLAY", r.bufW - 80, 38, { color: "#fff" });
     r.text("SLOW-MO 0.5X", 8, 38, { color: "#94a3b8" });
     if (!this.opts.attract) r.text(`${keyLabel(this.opts.bindings.action, true)} SKIP`, 8, r.bufH - 40, { color: "#64748b" });
-  }
-
-  /** Broadcast-style team comparison with bars that grow in over the first second. */
-  private drawStatsBoard(r: Renderer, title: string, tt: number): void {
-    const e = this.engine;
-    const a = e.teamStats[0];
-    const b = e.teamStats[1];
-    const grow = easeOut(clamp(tt / 0.9, 0, 1));
-    const w = 500;
-    const h = 232;
-    const x = Math.round(r.bufW / 2 - w / 2);
-    const y = Math.round(r.bufH / 2 - h / 2);
-    r.panel(x, y, w, h, { fill: "rgba(5,8,18,0.94)" });
-    r.rect(x, y, w, 3, "#facc15");
-    r.text(title, r.bufW / 2, y + 10, { size: 12, align: "center", color: "#facc15" });
-
-    // header: crests as colour blocks + score
-    r.rect(x + 18, y + 30, 10, 18, e.teams[0].color);
-    r.rect(x + w - 28, y + 30, 10, 18, e.teams[1].color);
-    r.text(e.teams[0].data.short, x + 34, y + 35, { size: 9, color: "#ffffff" });
-    r.text(e.teams[1].data.short, x + w - 34, y + 35, { size: 9, align: "right", color: "#ffffff" });
-    r.text(`${e.score[0]}  -  ${e.score[1]}`, r.bufW / 2, y + 33, { size: 13, align: "center", color: "#ffffff" });
-
-    const possTot = Math.max(1, a.possessionSeconds + b.possessionSeconds);
-    const terrTot = Math.max(1, a.territorySeconds + b.territorySeconds);
-    const rows: [string, number, number, boolean][] = [
-      ["POSSESSION", Math.round((a.possessionSeconds / possTot) * 100), Math.round((b.possessionSeconds / possTot) * 100), true],
-      ["TERRITORY", Math.round((a.territorySeconds / terrTot) * 100), Math.round((b.territorySeconds / terrTot) * 100), true],
-      ["TRIES", a.tries, b.tries, false],
-      ["METRES MADE", Math.round(a.metresMade), Math.round(b.metresMade), false],
-      ["LINE BREAKS", a.lineBreaks, b.lineBreaks, false],
-      ["TACKLES", a.tackles, b.tackles, false],
-      ["PASSES", a.passes, b.passes, false],
-      ["SCRUMS WON", a.scrumsWon, b.scrumsWon, false],
-      ["LINEOUTS WON", a.lineoutsWon, b.lineoutsWon, false],
-      ["PENALTIES", a.penalties, b.penalties, false],
-    ];
-    const rowH = 17;
-    const top = y + 56;
-    const barW = 150;
-    const mid = r.bufW / 2;
-    rows.forEach(([label, va, vb, pct], i) => {
-      const ry = top + i * rowH;
-      const tot = pct ? 100 : Math.max(1, va + vb);
-      const fa = (va / tot) * grow;
-      const fb = (vb / tot) * grow;
-      // values
-      r.text(pct ? `${va}%` : String(va), mid - barW - 10, ry + 4, { size: 8, align: "right", color: va >= vb ? "#ffffff" : "#94a3b8" });
-      r.text(pct ? `${vb}%` : String(vb), mid + barW + 10, ry + 4, { size: 8, color: vb >= va ? "#ffffff" : "#94a3b8" });
-      // bars grow outward from the centre
-      r.rect(mid - barW, ry + 5, barW, 6, "rgba(255,255,255,0.08)");
-      r.rect(mid, ry + 5, barW, 6, "rgba(255,255,255,0.08)");
-      r.rect(mid - Math.round(barW * fa), ry + 5, Math.round(barW * fa), 6, e.teams[0].color);
-      r.rect(mid, ry + 5, Math.round(barW * fb), 6, e.teams[1].color);
-      // label over the centre seam
-      r.rect(mid - 42, ry + 3, 84, 10, "rgba(5,8,18,0.95)");
-      r.text(label, mid, ry + 4, { size: 6, align: "center", color: "#cbd5e1" });
-    });
-    if (!this.opts.attract && Math.floor(this.t * 2) % 2 === 0) {
-      r.text(`PRESS ${keyLabel(this.opts.bindings.action, true)} TO CONTINUE`, r.bufW / 2, y + h - 14, { align: "center", size: 7, color: "#94a3b8" });
-    }
   }
 
   private drawScoreCard(r: Renderer, title: string): void {

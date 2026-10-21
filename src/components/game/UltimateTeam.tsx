@@ -26,6 +26,7 @@ import {
 import type { Screen } from "./GameShell";
 import MatchReport from "./MatchReport";
 import MatchView from "./MatchView";
+import PlayerCard from "./PlayerCard";
 import { Crest, Btn, Kicker, Panel, PlayerSprite, ScreenHeader, Scroll } from "./ui";
 
 type Tab = "club" | "squad" | "packs" | "challenges" | "season";
@@ -75,25 +76,6 @@ export default function UltimateTeam({ user, bindings, go, setInMatch }: { user:
   };
   useEffect(() => { void load(); }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { setInMatch(Boolean(battle)); return () => setInMatch(false); }, [battle, setInMatch]);
-  // Controller LB / RB (and keyboard Q / E) cycle the UT sections.
-  useEffect(() => {
-    const order: Tab[] = ["club", "squad", "season", "packs", "challenges"];
-    const cycle = (dir: -1 | 1) => setTab((cur) => order[(order.indexOf(cur) + dir + order.length) % order.length]);
-    const onKey = (e: KeyboardEvent) => {
-      const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === "INPUT" || t.tagName === "SELECT" || t.tagName === "TEXTAREA")) return;
-      if (e.key === "q" || e.key === "Q") cycle(-1);
-      if (e.key === "e" || e.key === "E") cycle(1);
-    };
-    const onBumper = (e: Event) => cycle((e as CustomEvent<-1 | 1>).detail);
-    window.addEventListener("keydown", onKey);
-    window.addEventListener("pixelruggas:bumper", onBumper);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      window.removeEventListener("pixelruggas:bumper", onBumper);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const commit = async (payload: Record<string, unknown>) => {
     if (!clubId) return null;
@@ -107,7 +89,6 @@ export default function UltimateTeam({ user, bindings, go, setInMatch }: { user:
   };
 
   if (!user) return <SignInGate go={go} />;
-
   if (!club) return <ClubSetup summaries={summaries} onCreated={(id) => void loadClub(id)} go={go} />;
   if (completedBattle) return <ResultOverlay result={completedBattle.result} club={club} opponent={completedBattle.opponent} userHome={completedBattle.userHome} onClose={() => { setCompletedBattle(null); setTab("club"); }} />;
 
@@ -141,107 +122,52 @@ export default function UltimateTeam({ user, bindings, go, setInMatch }: { user:
   }
 
   const totalOvr = Math.round(getSquadCards(club).slice(0, 15).reduce((sum, card) => sum + card.ovr, 0) / 15);
-  const tabs: { id: Tab; label: string; sub: string; accent: string }[] = [
-    { id: "club", label: "Club", sub: "Overview", accent: "#facc15" },
-    { id: "squad", label: "Squad", sub: "Matchday 23", accent: "#c084fc" },
-    { id: "season", label: "Season", sub: "League · promotion", accent: "#38bdf8" },
-    { id: "packs", label: "Packs", sub: "Open & quick sell", accent: "#34d399" },
-    { id: "challenges", label: "Challenges", sub: "Earn funds", accent: "#fb923c" },
+  const tabs: { id: Tab; label: string }[] = [
+    { id: "club", label: "Club" }, { id: "squad", label: "Squad" }, { id: "packs", label: "Packs & Sell" },
+    { id: "challenges", label: "Challenges" }, { id: "season", label: "League Season" },
   ];
-  const activeTab = tabs.find((t) => t.id === tab) ?? tabs[0];
-
 
   return (
-    <div className="relative flex h-full min-h-0 flex-col">
-      {/* ── UT top bar: wordmark, breadcrumbs, funds / rating ── */}
-      <div className="mb-3 flex items-center justify-between gap-3">
+    <div className="flex h-full flex-col">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border-2 border-white/10 bg-gradient-to-r from-slate-900 to-slate-950 px-5 py-3">
         <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <span className="font-pixel grid h-9 w-9 place-items-center border-2 border-black bg-[#c084fc] text-[11px] text-black shadow-[3px_3px_0_#000]">UT</span>
-            <div>
-              <p className="font-pixel text-[11px] uppercase leading-none text-white">{club.clubName}</p>
-              <p className="font-pixel mt-1 text-[7px] uppercase tracking-[0.25em] text-slate-400">{activeTab.sub}</p>
-            </div>
+          <div className="grid h-12 w-12 place-items-center rounded-lg border-2" style={{ borderColor: club.primary, background: club.primary }}>
+            <span className="font-pixel text-sm" style={{ color: club.secondary }}>{club.clubName.slice(0, 2).toUpperCase()}</span>
           </div>
-          <nav className="hidden items-center gap-1 md:flex" aria-label="Ultimate Team sections">
-            {tabs.map((t) => (
-              <button
-                key={t.id}
-                onClick={() => setTab(t.id)}
-                className={`font-pixel border-b-2 px-3 py-2 text-[8px] uppercase tracking-[0.2em] transition ${
-                  tab === t.id ? "text-white" : "border-transparent text-slate-500 hover:text-slate-200"
-                }`}
-                style={tab === t.id ? { borderColor: t.accent } : undefined}
-              >
-                {t.label}
-              </button>
-            ))}
-          </nav>
+          <div>
+            <p className="text-xs uppercase tracking-[0.3em] text-yellow-400">PixelRuggas Ultimate Team</p>
+            <h1 className="text-2xl font-black uppercase leading-none">{club.clubName}</h1>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="border-2 border-black bg-black/70 px-3 py-1.5 text-center shadow-[3px_3px_0_#000]">
-            <p className="font-pixel text-[11px] leading-none text-yellow-300">{club.coins.toLocaleString()}</p>
-            <p className="font-pixel mt-1 text-[6px] uppercase tracking-widest text-slate-400">Funds</p>
+        <div className="flex items-center gap-3">
+          <div className="rounded-lg border border-yellow-400/60 bg-yellow-400/10 px-4 py-2 text-center">
+            <p className="text-lg font-black leading-none text-yellow-300">{club.coins.toLocaleString()}</p>
+            <p className="text-[10px] uppercase tracking-widest text-slate-400">Funds</p>
           </div>
-          <div className="border-2 border-black bg-black/70 px-3 py-1.5 text-center shadow-[3px_3px_0_#000]">
-            <p className="font-pixel text-[11px] leading-none text-white">{totalOvr}</p>
-            <p className="font-pixel mt-1 text-[6px] uppercase tracking-widest text-slate-400">Team OVR</p>
+          <div className="rounded-lg border border-white/15 bg-black/30 px-4 py-2 text-center">
+            <p className="text-lg font-black leading-none">{totalOvr}</p>
+            <p className="text-[10px] uppercase tracking-widest text-slate-400">Team OVR</p>
           </div>
-          <Btn onClick={() => go({ name: "menu" })} className="!py-2.5 !text-[8px]">Menu</Btn>
+          <Btn onClick={() => go({ name: "menu" })}>Menu</Btn>
         </div>
       </div>
 
-      {error && <p className="mb-2 border-2 border-red-500/60 bg-red-950/60 px-4 py-2 text-lg text-red-100">{error}</p>}
-      {notice && <p className="mb-2 border-2 border-green-400/60 bg-green-950/60 px-4 py-2 text-lg text-green-100">{notice}</p>}
-
-      {/* ── body: left rail (main-menu style) + content ── */}
-      <div className="grid min-h-0 flex-1 grid-cols-12 gap-3">
-        <aside className="col-span-3 hidden min-h-0 flex-col gap-1 md:flex lg:col-span-2">
-          {tabs.map((t) => {
-            const active = tab === t.id;
-            return (
-              <button
-                key={t.id}
-                onClick={() => setTab(t.id)}
-                className={`group flex items-center gap-2.5 py-2 pl-1 text-left transition-all ${active ? "translate-x-1.5" : ""}`}
-              >
-                <span className="block w-1.5 shrink-0 transition-all" style={{ height: active ? 26 : 0, background: t.accent }} />
-                <span>
-                  <span className={`font-pixel block uppercase leading-tight transition-all ${active ? "text-[13px] text-white drop-shadow-[2px_2px_0_#000]" : "text-[10px] text-slate-500 group-hover:text-slate-200"}`}>{t.label}</span>
-                  <span className={`block text-[13px] leading-none ${active ? "text-slate-300" : "text-slate-600"}`}>{t.sub}</span>
-                </span>
-              </button>
-            );
-          })}
-          <div className="mt-auto border-2 border-black bg-black/60 p-2.5 shadow-[3px_3px_0_#000]">
-            <p className="font-pixel text-[6px] uppercase tracking-widest text-slate-400">Season</p>
-            <p className="mt-1 text-[14px] leading-tight text-slate-200">{club.league ? `Division ${club.league.divisionIndex + 1} · Season ${club.league.season} · Round ${club.league.round}` : "Not started"}</p>
-          </div>
-        </aside>
-
-        <div className="col-span-12 min-h-0 md:col-span-9 lg:col-span-10">
-          {tab === "squad" ? (
-            <SquadTab club={club} busy={busy} onSave={async (lineup, bench) => { const data = await commit({ action: "save-squad", lineup, bench }); if (data) setNotice("Your matchday 23 is saved."); }} onSell={async (id) => { const data = await commit({ action: "quick-sell", cardIds: [id] }); if (data) { audio.playCoin(); setNotice(`Sold for +${data.coinsEarned ?? 0} funds.`); } }} />
-          ) : (
-            <Scroll className="pr-2">
-              {tab === "club" && <ClubHome club={club} onTab={setTab} />}
-              {tab === "packs" && <PackTab club={club} busy={busy} onOpen={async (packId) => { const data = await commit({ action: "open-pack", packId }); const cards = data?.packedCards as UltimateCard[] | undefined; if (cards) { audio.playPackOpen(); const best = Math.max(...cards.map((card) => card.ovr)); if (best >= 88) audio.playLegendary(); else if (best >= 80) audio.playFanfare(); setPackCards(cards); setReveal(0); } }} onSell={async (id) => { const data = await commit({ action: "quick-sell", cardIds: [id] }); if (data) { audio.playCoin(); setNotice(`Sold for +${data.coinsEarned ?? 0} funds.`); } }} onSellDuplicates={async () => { const data = await commit({ action: "quick-sell-duplicates" }); if (data) { audio.playCoin(); setNotice(`Sold ${data.count ?? 0} duplicates for +${data.coinsEarned ?? 0} funds.`); } }} />}
-              {tab === "challenges" && <Challenges club={club} busy={busy} onClaim={async (id) => { const data = await commit({ action: "claim-challenge", challengeId: id }); if (data) { audio.playCoin(); setNotice(`Challenge reward claimed: +${data.reward ?? 0} funds.`); } }} />}
-              {tab === "season" && <SeasonTab club={club} busy={busy} onPlayNext={() => { const match = currentLeagueMatch(club); if (!match) return; const userHome = match.home === -1; const oppIndex = (match.home === -1 ? match.away : match.home) - 1; setBattle({ opponent: club.league!.opponents[oppIndex], mode: "league", userHome }); }} onOnline={async (username) => { const data = await inviteUltimate(clubId!, username); if (data.error) setError(data.error); else { setNotice(`Ultimate Team invite sent to ${data.recipient}. Open Online to track it.`); go({ name: "online" }); } }} />}
-            </Scroll>
-          )}
-        </div>
+      <div className="mb-3 flex flex-wrap gap-2">
+        {tabs.map((t) => (
+          <button key={t.id} onClick={() => setTab(t.id)} className={`rounded-lg border-2 px-5 py-2 text-base font-bold uppercase tracking-wide transition ${tab === t.id ? "border-yellow-400 bg-yellow-400 text-black" : "border-white/15 bg-black/30 text-slate-200 hover:border-white/40"}`}>
+            {t.label}
+          </button>
+        ))}
       </div>
-
-      {/* ── bottom prompt bar ── */}
-      <div className="mt-2 flex items-center gap-4 border-t border-white/10 pt-2">
-        <Prompt badge="A" alt="↵" label="Select" />
-        <Prompt badge="B" alt="ESC" label="Back" />
-        <Prompt badge="LB/RB" alt="Q/E" label="Switch section" />
-        {tab === "squad" && <Prompt badge="A" alt="↵" label="Pick up / place" />}
-        <span className="font-pixel ml-auto text-[6px] uppercase tracking-widest text-slate-500">Ultimate Team · {club.cards.length} cards</span>
-      </div>
-
+      {error && <p className="mb-3 rounded-lg border-2 border-red-500/60 bg-red-950/60 px-4 py-2 text-lg text-red-100">{error}</p>}
+      {notice && <p className="mb-3 rounded-lg border-2 border-green-400/60 bg-green-950/60 px-4 py-2 text-lg text-green-100">{notice}</p>}
+      <Scroll className="pr-2">
+        {tab === "club" && <ClubHome club={club} onTab={setTab} />}
+        {tab === "squad" && <SquadTab club={club} busy={busy} onSave={async (lineup, bench) => { const data = await commit({ action: "save-squad", lineup, bench }); if (data) setNotice("Your matchday 23 is saved."); }} onSell={async (id) => { const data = await commit({ action: "quick-sell", cardIds: [id] }); if (data) { audio.playCoin(); setNotice(`Sold for +${data.coinsEarned ?? 0} funds.`); } }} />}
+        {tab === "packs" && <PackTab club={club} busy={busy} onOpen={async (packId) => { const data = await commit({ action: "open-pack", packId }); const cards = data?.packedCards as UltimateCard[] | undefined; if (cards) { audio.playPackOpen(); const best = Math.max(...cards.map((card) => card.ovr)); if (best >= 88) audio.playLegendary(); else if (best >= 80) audio.playFanfare(); setPackCards(cards); setReveal(0); } }} onSell={async (id) => { const data = await commit({ action: "quick-sell", cardIds: [id] }); if (data) { audio.playCoin(); setNotice(`Sold for +${data.coinsEarned ?? 0} funds.`); } }} onSellDuplicates={async () => { const data = await commit({ action: "quick-sell-duplicates" }); if (data) { audio.playCoin(); setNotice(`Sold ${data.count ?? 0} duplicates for +${data.coinsEarned ?? 0} funds.`); } }} />}
+        {tab === "challenges" && <Challenges club={club} busy={busy} onClaim={async (id) => { const data = await commit({ action: "claim-challenge", challengeId: id }); if (data) { audio.playCoin(); setNotice(`Challenge reward claimed: +${data.reward ?? 0} funds.`); } }} />}
+        {tab === "season" && <SeasonTab club={club} busy={busy} onPlayNext={() => { const match = currentLeagueMatch(club); if (!match) return; const userHome = match.home === -1; const oppIndex = (match.home === -1 ? match.away : match.home) - 1; setBattle({ opponent: club.league!.opponents[oppIndex], mode: "league", userHome }); }} onOnline={async (username) => { const data = await inviteUltimate(clubId!, username); if (data.error) setError(data.error); else { setNotice(`Ultimate Team invite sent to ${data.recipient}. Open Online to track it.`); go({ name: "online" }); } }} />}
+      </Scroll>
       {packCards && <PackReveal key={packCards[reveal]?.instanceId ?? reveal} cards={packCards} index={reveal} onNext={() => reveal < packCards.length - 1 ? setReveal(reveal + 1) : setPackCards(null)} />}
     </div>
   );
@@ -407,244 +333,42 @@ function FormationPitch({ byId, lineup, bench, selected, onSelect, readOnly }: {
   );
 }
 
-/** Rugby position tag by shirt number (1 loosehead … 15 fullback). */
-const UT_POS_TAG = ["LH", "HK", "TH", "LK", "LK", "BF", "OF", "N8", "SH", "FH", "LW", "IC", "OC", "RW", "FB"];
-
-/**
- * Pitch layout for the squad view – vertical pitch, attacking up the screen, so the
- * forwards pack down at the bottom and the backs fan out towards the top like a
- * real team sheet. Values are % of the pitch panel.
- */
-const UT_SPOTS: { x: number; y: number }[] = [
-  { x: 36, y: 86 }, { x: 50, y: 88 }, { x: 64, y: 86 },
-  { x: 43, y: 75 }, { x: 57, y: 75 },
-  { x: 29, y: 73 }, { x: 71, y: 73 },
-  { x: 50, y: 65 },
-  { x: 38, y: 55 },
-  { x: 52, y: 45 },
-  { x: 10, y: 30 },
-  { x: 36, y: 33 },
-  { x: 56, y: 27 },
-  { x: 88, y: 24 },
-  { x: 50, y: 10 },
-];
-
-/** One slot on the squad pitch / bench. Module-level so React keeps it mounted between taps. */
-function SquadCard({
-  id, index, area, byId, held, focus, onTap, onFocus,
-}: {
-  id: string | undefined; index: number; area: "lineup" | "bench";
-  byId: Map<string, UltimateCard>; held: string | null; focus: string | null;
-  onTap: (area: "lineup" | "bench", index: number) => void; onFocus: (id: string) => void;
-}) {
-  const card = id ? byId.get(id) : undefined;
-  const t = card ? findTeam(card.teamId) : undefined;
-  const isHeld = !!id && held === id;
-  const isFocus = !!id && focus === id;
-  const tag = area === "lineup" ? UT_POS_TAG[index] : "SUB";
-  return (
-    <button
-      type="button"
-      onClick={() => onTap(area, index)}
-      onFocus={() => id && onFocus(id)}
-      onMouseEnter={() => id && onFocus(id)}
-      title={card ? `${card.name} · ${card.positionName}` : `Empty ${tag} slot`}
-      className={`relative flex w-[60px] flex-col items-center border-2 pb-0.5 pt-0.5 shadow-[2px_2px_0_#000] transition-transform hover:z-20 hover:scale-105 ${
-        isHeld ? "border-yellow-300 bg-yellow-400/20" : isFocus ? "border-white bg-[#10243a]" : "border-black bg-[#0b1626]/95"
-      } ${held && !isHeld ? "ring-1 ring-yellow-300/40" : ""}`}
-    >
-      {isFocus && <span className="pointer-events-none absolute -inset-1 border-2 border-yellow-300" aria-hidden />}
-      <span className="flex w-full items-center justify-between px-1">
-        <span className="font-pixel text-[9px] text-yellow-300">{card?.ovr ?? "--"}</span>
-        <span className="font-pixel text-[6px] text-slate-400">{tag}</span>
-      </span>
-      {card ? (
-        <PlayerSprite jersey={t?.primary ?? "#475569"} jersey2={t?.secondary ?? "#f8fafc"} number={card.position} name={card.name} scale={1} view="front" pose="idle" />
-      ) : (
-        <span className="grid h-7 w-5 place-items-center font-pixel text-[9px] text-slate-600">+</span>
-      )}
-      <span className="font-pixel w-full truncate px-0.5 text-center text-[6px] uppercase text-white">
-        {card ? card.name.split(" ").slice(-1)[0].slice(0, 9) : "EMPTY"}
-      </span>
-    </button>
-  );
-}
-
 function SquadTab({ club, busy, onSave, onSell }: { club: UltimateClubState; busy: boolean; onSave: (lineup: string[], bench: string[]) => Promise<void>; onSell: (id: string) => Promise<void> }) {
-  const [lineup, setLineup] = useState(club.lineup);
-  const [bench, setBench] = useState(club.bench);
-  // `held` = card picked up and waiting to be placed; `focus` = card currently inspected on the right.
-  const [held, setHeld] = useState<string | null>(null);
-  const [focus, setFocus] = useState<string | null>(club.lineup[9] ?? club.lineup[0] ?? null);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [dirty, setDirty] = useState(false);
-  useEffect(() => { setLineup(club.lineup); setBench(club.bench); setDirty(false); }, [club]);
+  const [lineup, setLineup] = useState(club.lineup); const [bench, setBench] = useState(club.bench); const [selected, setSelected] = useState<string | null>(null); const [notice, setNotice] = useState<string | null>(null);
+  useEffect(() => { setLineup(club.lineup); setBench(club.bench); }, [club]);
   const byId = useMemo(() => new Map(club.cards.map((c) => [c.instanceId, c])), [club.cards]);
-
+  const assign = (area: "lineup" | "bench", index: number) => {
+    if (!selected) { setSelected(area === "lineup" ? lineup[index] : bench[index]); return; }
+    const target = area === "lineup" ? lineup : bench;
+    const sourceLine = lineup.indexOf(selected); const sourceBench = bench.indexOf(selected);
+    const displaced = target[index]; const newLine = [...lineup], newBench = [...bench];
+    if (sourceLine >= 0) newLine[sourceLine] = displaced; else if (sourceBench >= 0) newBench[sourceBench] = displaced;
+    if (area === "lineup") newLine[index] = selected; else newBench[index] = selected;
+    setLineup(newLine); setBench(newBench); setSelected(null); setNotice("Card moved. Save your matchday 23 when ready.");
+  };
   const squadIds = new Set([...lineup, ...bench]);
   const available = club.cards.filter((card) => !squadIds.has(card.instanceId)).sort((a, b) => b.ovr - a.ovr);
-  const focusCard = focus ? byId.get(focus) : undefined;
-  const lineupOvr = Math.round(lineup.reduce((acc, id) => acc + (byId.get(id)?.ovr ?? 0), 0) / Math.max(1, lineup.length));
-
-  /** Tap a slot: pick up its card, or drop the held card into it (swapping as needed). */
-  const tapSlot = (area: "lineup" | "bench", index: number) => {
-    const target = area === "lineup" ? lineup : bench;
-    const occupant = target[index];
-    if (!held) {
-      if (occupant) { setHeld(occupant); setFocus(occupant); setNotice("Picked up. Choose a slot to place them."); }
-      return;
-    }
-    const newLine = [...lineup];
-    const newBench = [...bench];
-    const srcLine = lineup.indexOf(held);
-    const srcBench = bench.indexOf(held);
-    // move the displaced occupant back to where the held card came from
-    if (srcLine >= 0) newLine[srcLine] = occupant;
-    else if (srcBench >= 0) newBench[srcBench] = occupant;
-    if (area === "lineup") newLine[index] = held; else newBench[index] = held;
-    setLineup(newLine); setBench(newBench); setHeld(null); setDirty(true);
-    setNotice("Moved. Save the squad when you are done.");
-  };
-
-  /** Tap a card in the collection list: pick it up, or inspect it. */
-  const tapAvailable = (id: string) => {
-    setFocus(id);
-    setHeld((h) => (h === id ? null : id));
-  };
-
-  const teamOf = (card?: UltimateCard) => (card ? findTeam(card.teamId) : undefined);
-
   return (
-    <div className="grid h-full min-h-0 grid-cols-12 gap-3">
-      {/* ── left: club header + collection list ── */}
-      <aside className="col-span-3 flex min-h-0 flex-col gap-2 xl:col-span-2">
-        <div className="border-2 border-black bg-black/70 p-3 shadow-[3px_3px_0_#000]">
-          <p className="font-pixel truncate text-[9px] uppercase leading-tight">{club.clubName}</p>
-          <div className="mt-2 flex items-center justify-between border-t border-white/10 pt-2">
-            <span className="font-pixel text-[7px] uppercase text-slate-400">Starting XV</span>
-            <span className="font-pixel text-[13px] text-yellow-300">{lineupOvr}</span>
-          </div>
-          <p className="mt-1 text-[13px] text-slate-400">{lineup.filter(Boolean).length}/15 picked · {bench.filter(Boolean).length}/8 bench</p>
+    <div className="grid gap-4 xl:grid-cols-[1.2fr_.8fr]">
+      <Panel className="p-5">
+        <div className="flex items-center justify-between">
+          <Kicker>Matchday 23 · formation view</Kicker>
+          <Btn primary disabled={busy} onClick={() => void onSave(lineup, bench)}>Save squad</Btn>
         </div>
-        <Btn primary disabled={busy || !dirty} onClick={() => void onSave(lineup, bench)} className="!py-3 !text-[8px]">
-          {dirty ? "Save squad" : "Squad saved"}
-        </Btn>
-        {held && (
-          <button type="button" onClick={() => { setHeld(null); setNotice(null); }} className="font-pixel border-2 border-yellow-300/70 bg-yellow-400/10 px-2 py-2 text-[7px] uppercase tracking-widest text-yellow-200">
-            Holding {byId.get(held)?.name.split(" ").slice(-1)[0]} · tap to drop
-          </button>
-        )}
-        <p className="font-pixel text-[7px] uppercase tracking-widest text-slate-400">Collection · {available.length}</p>
-        <Scroll className="min-h-0 flex-1 pr-1">
-          <div className="space-y-1">
-            {available.map((card) => {
-              const t = teamOf(card);
-              const isHeld = held === card.instanceId;
-              return (
-                <button
-                  key={card.instanceId}
-                  type="button"
-                  onClick={() => tapAvailable(card.instanceId)}
-                  onFocus={() => setFocus(card.instanceId)}
-                  className={`flex w-full items-center gap-2 border-2 px-1.5 py-1 text-left transition ${isHeld ? "border-yellow-300 bg-yellow-400/15" : focus === card.instanceId ? "border-white/60 bg-black/50" : "border-transparent bg-black/40 hover:border-white/20"}`}
-                >
-                  <span className="font-pixel w-6 text-[9px] text-yellow-300">{card.ovr}</span>
-                  <span className="h-3 w-1.5 shrink-0" style={{ background: t?.primary ?? "#475569" }} />
-                  <span className="min-w-0 flex-1 truncate text-[13px]">{card.name}</span>
-                  <span className="font-pixel text-[6px] text-slate-500">{UT_POS_TAG[card.position - 1] ?? "SUB"}</span>
-                </button>
-              );
-            })}
-            {available.length === 0 && <p className="border border-white/10 p-3 text-center text-[13px] text-slate-500">Every card is in the matchday 23.</p>}
-          </div>
-        </Scroll>
-      </aside>
-
-      {/* ── centre: the pitch + bench ── */}
-      <section className="col-span-6 flex min-h-0 flex-col xl:col-span-7">
-        <div className="relative min-h-0 flex-1 overflow-hidden border-2 border-black shadow-[4px_4px_0_#000]">
-          <div className="absolute inset-0">
-            {Array.from({ length: 10 }).map((_, i) => (
-              <div key={i} className="absolute inset-x-0" style={{ top: `${i * 10}%`, height: "10%", background: i % 2 ? "#1b6c31" : "#1f7a37" }} />
-            ))}
-          </div>
-          <div className="pointer-events-none absolute inset-0">
-            <div className="absolute inset-x-[4%] top-[6%] h-px bg-white/55" />
-            <div className="absolute inset-x-[4%] top-[22%] h-px bg-white/35" />
-            <div className="absolute inset-x-[4%] top-1/2 h-0.5 bg-white/60" />
-            <div className="absolute inset-x-[4%] bottom-[22%] h-px bg-white/35" />
-            <div className="absolute inset-x-[4%] bottom-[6%] h-px bg-white/55" />
-            <div className="absolute inset-y-[4%] left-[4%] w-px bg-white/45" />
-            <div className="absolute inset-y-[4%] right-[4%] w-px bg-white/45" />
-            <div className="absolute left-1/2 top-[3%] h-[6%] w-0.5 -translate-x-1/2 bg-white/70" />
-            <div className="absolute bottom-[3%] left-1/2 h-[6%] w-0.5 -translate-x-1/2 bg-white/70" />
-            <p className="font-pixel absolute bottom-3 left-4 text-[22px] uppercase text-white/10">MATCHDAY XV</p>
-          </div>
-          {notice && <p className="font-pixel absolute left-1/2 top-2 z-30 -translate-x-1/2 border-2 border-black bg-black/80 px-3 py-1.5 text-[7px] uppercase tracking-widest text-yellow-200 shadow-[2px_2px_0_#000]">{notice}</p>}
-          {UT_SPOTS.map((spot, i) => (
-            <div key={i} className="absolute -translate-x-1/2 -translate-y-1/2" style={{ left: `${spot.x}%`, top: `${spot.y}%`, zIndex: focus && lineup[i] === focus ? 30 : 10 }}>
-              <SquadCard id={lineup[i]} index={i} area="lineup" byId={byId} held={held} focus={focus} onTap={tapSlot} onFocus={setFocus} />
-            </div>
-          ))}
+        {notice && <p className="mt-2 text-lg text-yellow-200">{notice}</p>}
+        <p className="mt-2 text-base text-slate-300">Click a card in the available collection, then click a formation or bench slot to place it. Click a placed player to pick them up and move them.</p>
+        <div className="mt-4">
+          <FormationPitch byId={byId} lineup={lineup} bench={bench} selected={selected} onSelect={(id) => { const slot = lineup.indexOf(id); if (slot >= 0) assign("lineup", slot); else assign("bench", bench.indexOf(id)); }} />
         </div>
-        <div className="mt-2 border-2 border-black bg-black/70 p-2 shadow-[3px_3px_0_#000]">
-          <p className="font-pixel mb-1.5 text-[7px] uppercase tracking-widest text-slate-400">Bench · 8</p>
-          <div className="flex gap-1.5 overflow-x-auto pb-1 scroll">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <SquadCard key={i} id={bench[i]} index={i} area="bench" byId={byId} held={held} focus={focus} onTap={tapSlot} onFocus={setFocus} />
-            ))}
-          </div>
+      </Panel>
+      <Panel className="p-5">
+        <Kicker>Available collection · {available.length}</Kicker>
+        <p className="mt-2 text-base text-slate-300">Players outside your matchday 23. Select one to place it in the squad, or quick sell it for funds.</p>
+        <div className="mt-3 flex max-h-[620px] flex-wrap gap-3 overflow-y-auto pr-1 scroll">
+          {available.map((card) => <CardMini key={card.instanceId} card={card} selected={selected === card.instanceId} onSelect={() => setSelected(card.instanceId)} onSell={() => void onSell(card.instanceId)} />)}
+          {available.length === 0 && <p className="col-span-full rounded-lg border border-white/10 p-4 text-center text-slate-500">Every owned card is in your matchday 23. Open a pack to grow the collection.</p>}
         </div>
-      </section>
-
-      {/* ── right: focused player ── */}
-      <aside className="col-span-3 flex min-h-0 flex-col gap-2">
-        <div className="flex min-h-0 flex-1 flex-col border-2 border-black bg-black/75 p-3 shadow-[3px_3px_0_#000]">
-          {focusCard ? (
-            <>
-              <div className="flex items-start gap-3">
-                <span className="border-2 border-black bg-[#10243a] p-1 shadow-[2px_2px_0_#000]">
-                  <PlayerSprite jersey={teamOf(focusCard)?.primary ?? "#475569"} jersey2={teamOf(focusCard)?.secondary ?? "#f8fafc"} number={focusCard.position} name={focusCard.name} scale={2} view="front" pose="idle" />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="font-pixel text-[7px] uppercase tracking-widest text-yellow-400">#{focusCard.position} {UT_POS_TAG[focusCard.position - 1] ?? "SUB"}</p>
-                  <p className="font-pixel mt-1 break-words text-[11px] uppercase leading-snug">{focusCard.name}</p>
-                  <p className="mt-1 text-[14px] text-slate-400">{focusCard.positionName}</p>
-                </div>
-              </div>
-              <div className="mt-3 flex items-center justify-between border-y border-white/10 py-2">
-                <span className="font-pixel text-[7px] uppercase text-slate-400">Overall</span>
-                <span className="font-pixel text-[20px] text-yellow-300">{focusCard.ovr}</span>
-              </div>
-              <div className="mt-3 space-y-1.5">
-                {Object.entries(focusCard.ratings).slice(0, 7).map(([k, v]) => (
-                  <div key={k} className="flex items-center gap-2">
-                    <span className="font-pixel w-9 text-[7px] uppercase text-slate-400">{k.slice(0, 4)}</span>
-                    <span className="h-1.5 flex-1 bg-white/10"><span className="block h-full bg-gradient-to-r from-green-500 to-yellow-300" style={{ width: `${Math.min(100, v as number)}%` }} /></span>
-                    <span className="font-pixel w-6 text-right text-[8px] text-white">{v as number}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-3 border-t border-white/10 pt-2 text-[14px] text-slate-300">
-                <p><span className="text-slate-500">Club </span>{focusCard.clubName ?? focusCard.teamName}</p>
-                <p><span className="text-slate-500">Nation </span>{focusCard.country}</p>
-              </div>
-              <div className="mt-auto flex flex-col gap-1.5 pt-3">
-                <Btn onClick={() => setHeld(held === focusCard.instanceId ? null : focusCard.instanceId)} className="!py-2 !text-[7px]">
-                  {held === focusCard.instanceId ? "Put down" : "Pick up"}
-                </Btn>
-                {!squadIds.has(focusCard.instanceId) && (
-                  <Btn danger onClick={() => void onSell(focusCard.instanceId)} className="!py-2 !text-[7px]">
-                    Quick sell · {cardValue(focusCard).toLocaleString()} F
-                  </Btn>
-                )}
-              </div>
-            </>
-          ) : (
-            <p className="m-auto font-pixel text-[7px] uppercase tracking-widest text-slate-500">Select a card</p>
-          )}
-        </div>
-      </aside>
+      </Panel>
     </div>
   );
 }
@@ -693,7 +417,7 @@ function PackTab({ club, busy, onOpen, onSell, onSellDuplicates }: { club: Ultim
           {dupeCount > 0 && <Btn className="!py-2 !text-[9px]" disabled={busy} onClick={() => void onSellDuplicates()}>Sell {dupeCount} duplicates</Btn>}
         </div>
         <p className="mt-2 text-base text-slate-300">Values scale with OVR. Matchday 23 players are protected and never appear here.</p>
-        <div className="mt-3 grid max-h-[560px] grid-cols-2 gap-2 overflow-y-auto pr-1 scroll">
+        <div className="mt-3 flex max-h-[560px] flex-wrap gap-3 overflow-y-auto pr-1 scroll">
           {available.map((card) => <CardMini key={card.instanceId} card={card} onSell={() => void onSell(card.instanceId)} />)}
         </div>
       </Panel>
@@ -814,38 +538,26 @@ function PackReveal({ cards, index, onNext }: { cards: UltimateCard[]; index: nu
   );
 }
 
-function Prompt({ badge, alt, label }: { badge: string; alt: string; label: string }) {
-  return (
-    <span className="flex items-center gap-1.5">
-      <span className="font-pixel grid h-5 min-w-[20px] place-items-center rounded-full border border-white/40 bg-black/50 px-1 text-[6px] text-white" title={`Keyboard: ${alt}`}>{badge}</span>
-      <span className="font-pixel text-[7px] uppercase tracking-widest text-slate-400">{label}</span>
-    </span>
-  );
-}
-
 function CardMini({ card, selected, onSelect, onSell }: { card: UltimateCard; selected?: boolean; onSelect?: () => void; onSell?: () => void }) {
-  const rarity = { bronze: "#b7791f", silver: "#94a3b8", gold: "#facc15", elite: "#a78bfa" }[card.rarity];
-  const sourceTeam = findTeam(card.teamId);
-  const jersey = sourceTeam?.primary ?? "#475569";
-  const jersey2 = sourceTeam?.secondary ?? "#f8fafc";
-  const club = card.clubName ?? card.teamName;
   const value = cardValue(card);
   return (
-    <div className={`relative overflow-hidden rounded-lg border-2 bg-gradient-to-b from-slate-800/90 to-black/90 p-2.5 ${selected ? "ring-2 ring-yellow-300" : ""}`} style={{ borderColor: rarity }}>
-      <div className="absolute inset-x-0 top-0 h-1" style={{ background: rarity }} />
-      <button onClick={onSelect} className="flex w-full items-start gap-2 text-left">
-        <div className="grid h-14 w-11 shrink-0 place-items-end overflow-hidden rounded border border-white/15 bg-black/40">
-          <PlayerSprite jersey={jersey} jersey2={jersey2} number={card.position} name={card.name} scale={1.6} view="front" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex justify-between gap-1"><span className="text-[11px] font-bold text-slate-300">#{card.position} {card.positionName}</span><span className="text-base font-black" style={{ color: rarity }}>{card.ovr}</span></div>
-          <p className="truncate text-base font-bold leading-tight">{card.name}</p>
-          <p className="truncate text-xs text-slate-300">{club} · {card.country}</p>
-          <p className="mt-0.5 text-xs text-slate-400">PAC {card.ratings.pace} · KCK {card.ratings.kicking} · LD {card.ratings.leadership}</p>
-        </div>
-      </button>
-      {onSell && <button type="button" onClick={onSell} className="mt-2 w-full rounded border-2 border-yellow-400/70 bg-yellow-400/10 px-2 py-1.5 text-[11px] font-black uppercase text-yellow-300 hover:bg-yellow-400/20">Quick sell · {value.toLocaleString()} F</button>}
-    </div>
+    <PlayerCard
+      card={card}
+      size="md"
+      selected={selected}
+      onClick={onSelect}
+      footer={
+        onSell ? (
+          <button
+            type="button"
+            onClick={onSell}
+            className="font-pixel mt-1.5 w-full border-2 border-black bg-black/70 px-2 py-1.5 text-[7px] uppercase tracking-wider text-yellow-300 shadow-[2px_2px_0_#000] hover:bg-yellow-400/15"
+          >
+            Sell · {value.toLocaleString()} F
+          </button>
+        ) : undefined
+      }
+    />
   );
 }
 

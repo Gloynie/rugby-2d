@@ -42,8 +42,8 @@ body {
 
 body {
   font-family: "VT323", ui-monospace, "Courier New", monospace;
-  font-size: 20px;
-  line-height: 1.15;
+  font-size: 21px;
+  line-height: 1.2;
   color: #fff;
   -webkit-font-smoothing: none;
 }
@@ -93,7 +93,8 @@ html[data-smooth="1"] .game-canvas {
 }
 .px-btn {
   font-family: "PressStart2P", ui-monospace, monospace;
-  font-size: 10px;
+  font-size: 11px;
+  min-height: 38px;
   line-height: 1;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -439,3 +440,15 @@ html[data-smooth="1"] .game-canvas {
   60%  { transform: scale(1.04) rotate(0.5deg); opacity: 1; }
   100% { transform: none; opacity: 1; }
 }
+
+
+/* ---------------- readability helpers ---------------- */
+/* muted body copy should still pass contrast on the dark panels */
+.px-panel .text-slate-500 { color: #94a3b8; }
+.px-panel .text-slate-400 { color: #a8b3c7; }
+/* consistent vertical rhythm between stacked panels */
+.px-panel + .px-panel { margin-top: 12px; }
+/* make scrolling lists obviously scrollable */
+.scroll::-webkit-scrollbar { width: 10px; }
+.scroll::-webkit-scrollbar-thumb { background: #facc15; border: 2px solid #0b1020; }
+.scroll::-webkit-scrollbar-track { background: #0b1020; }

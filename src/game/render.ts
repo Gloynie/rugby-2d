@@ -162,12 +162,6 @@ export class Renderer {
   private b: CanvasRenderingContext2D;
   private stadium: Stadium;
   private looks: [Look[], Look[]] = [[], []];
-
-  /** The baked kit/look for a given player – lets cinematics draw a featured player. */
-  lookFor(team: TeamIndex, shirtNumber: number): Look | null {
-    const roster = this.looks[team];
-    return roster[Math.max(0, shirtNumber - 1)] ?? roster[0] ?? null;
-  }
   private crowd: CanvasPattern[] = [];
   private balls: Record<string, HTMLCanvasElement> = {};
   private phase: number[] = [];
@@ -1882,6 +1876,7 @@ export class Renderer {
 
   // ---------- HUD ----------
   private drawHUD(m: RugbyEngine): void {
+    this.drawPassTargets(m);
     this.drawScoreboard(m);
     this.drawMessage(m);
     this.drawPlayerCard(m);
@@ -1924,6 +1919,66 @@ export class Renderer {
     this.panel(x, y, Math.round(w), h, { accent: msg.color });
     this.text(msg.text, this.bufW / 2 + 2, y + 5, { size, align: "center", color: "#fff" });
     if (msg.sub) this.text(msg.sub, this.bufW / 2 + 2, y + (big ? 24 : 18), { align: "center", color: "#cbd5e1" });
+  }
+
+  /**
+   * Pass-target preview. While you carry the ball, the teammate you would pass to on each
+   * side is marked with a labelled chevron and a faint lane to them. The lane turns amber if
+   * a defender is close to it, so you know a pass is risky before you throw it.
+   */
+  private drawPassTargets(m: RugbyEngine): void {
+    if (m.userTeam === null || m.controlled < 0 || m.phase !== "play") return;
+    if (m.ball.carrier !== m.controlled) return;
+    const p = m.players[m.controlled];
+    const b = this.b;
+    const z = this.zoom;
+    const labelFor = (side: -1 | 1) => keyLabel(side === -1 ? this.bindings.passUp : this.bindings.passDown, true);
+    for (const side of [-1, 1] as const) {
+      const q = m.pickReceiver(p, side);
+      const x0 = this.sx(p.pos.x);
+      const y0 = this.sy(p.pos.y) - 10 * z;
+      if (!q) {
+        // Nobody there: a dim struck-through tag at the passer's side so you don't waste a press.
+        const yy = y0 + (side === -1 ? -18 : 14) * z;
+        this.rect(x0 - 10, yy - 1, 20, 9, "rgba(5,8,16,0.75)");
+        this.text(`${labelFor(side)} ✕`, x0, yy, { align: "center", color: "#64748b", size: 6 });
+        continue;
+      }
+      // risk: how close the nearest defender gets to the passing lane
+      let lane = 99;
+      const dx = q.pos.x - p.pos.x, dy = q.pos.y - p.pos.y;
+      const len = Math.max(0.001, Math.hypot(dx, dy));
+      for (const o of m.players) {
+        if (!o.isOnField || o.team === p.team || o.down > 0) continue;
+        const rx = o.pos.x - p.pos.x, ry = o.pos.y - p.pos.y;
+        const along = (rx * dx + ry * dy) / len;
+        if (along < -0.5 || along > len + 0.5) continue;
+        const across = Math.abs(rx * dy - ry * dx) / len;
+        if (across < lane) lane = across;
+      }
+      const safe = lane > 2.2;
+      const col = safe ? "rgba(74,222,128,0.95)" : "rgba(251,191,36,0.95)";
+      const x1 = this.sx(q.pos.x);
+      const y1 = this.sy(q.pos.y) - 10 * z;
+      // dotted lane
+      const steps = Math.max(3, Math.floor(len * 1.2));
+      for (let i = 1; i < steps; i++) {
+        const k = i / steps;
+        b.fillStyle = safe ? "rgba(74,222,128,0.45)" : "rgba(251,191,36,0.5)";
+        b.fillRect(Math.round(x0 + (x1 - x0) * k) - 1, Math.round(y0 + (y1 - y0) * k) - 1, 2, 2);
+      }
+      // chevron + key label above the receiver
+      const top = this.sy(q.pos.y) - (FOOT_Y + 6) * z;
+      const bob = Math.floor(this.now * 4) % 2;
+      b.fillStyle = col;
+      b.fillRect(x1 - z, top - 2 * z - bob, 2 * z, z);
+      b.fillRect(x1 - 2 * z, top - 3 * z - bob, 4 * z, z);
+      b.fillRect(x1 - 3 * z, top - 4 * z - bob, 6 * z, z);
+      const tag = labelFor(side);
+      const tw = this.measure(tag, 6) + 6;
+      this.rect(x1 - tw / 2, top - 13 * z - bob, tw, 9, "rgba(5,8,16,0.85)");
+      this.text(tag, x1, top - 12 * z - bob, { align: "center", color: col, size: 6 });
+    }
   }
 
   private drawPlayerCard(m: RugbyEngine): void {

@@ -12,28 +12,16 @@ import { MenuPad } from "./gamepad";
  * gets controller support without screen-specific wiring, and the screen's own
  * keyboard handlers keep working.
  */
-export function useGamepadNav(
-  rootSelector: string,
-  onBack?: () => void,
-  enabled = true,
-  onBumper?: (dir: -1 | 1) => void,
-): void {
+export function useGamepadNav(rootSelector: string, onBack?: () => void, enabled = true): void {
   useEffect(() => {
     if (!enabled || typeof window === "undefined") return;
     const reader = new MenuPad();
     let raf = 0;
     let lastH = 0;
     let hRepeatAt = 0;
-    let prevLb = false;
-    let prevRb = false;
 
     const focusables = (): HTMLElement[] => {
-      // If a full-screen overlay (pack reveal, result card, pause menu) is open, navigate
-      // inside it; otherwise navigate the screen root. This is what makes "every display"
-      // reachable rather than only the main screen area.
-      const overlays = Array.from(document.querySelectorAll<HTMLElement>("[data-pad-overlay], .fixed.inset-0"))
-        .filter((el) => el.getBoundingClientRect().width > 0 && el.querySelector("button, [role='button'], a[href], input, select"));
-      const root = overlays.length ? overlays[overlays.length - 1] : (document.querySelector(rootSelector) ?? document.body);
+      const root = document.querySelector(rootSelector) ?? document.body;
       return Array.from(
         root.querySelectorAll<HTMLElement>(
           'button:not([disabled]), [role="button"], a[href], input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
@@ -110,21 +98,9 @@ export function useGamepadNav(
         else focusables()[0]?.focus();
       }
       if (nav.back && onBack) onBack();
-      // LB / RB (buttons 4 / 5) cycle sections where a screen supports it.
-      if (onBumper && typeof navigator !== "undefined" && navigator.getGamepads) {
-        for (const p of navigator.getGamepads()) {
-          if (!p || !p.connected) continue;
-          const lb = !!p.buttons[4]?.pressed;
-          const rb = !!p.buttons[5]?.pressed;
-          if (lb && !prevLb) onBumper(-1);
-          if (rb && !prevRb) onBumper(1);
-          prevLb = lb; prevRb = rb;
-          break;
-        }
-      }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [rootSelector, onBack, enabled, onBumper]);
+  }, [rootSelector, onBack, enabled]);
 }

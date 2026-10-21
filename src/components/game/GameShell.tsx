@@ -103,13 +103,7 @@ export default function GameShell({ initialUser, initialScreen }: { initialUser:
 
   // Controller navigation on every sub-screen: stick/d-pad moves focus, A clicks, B goes back.
   // The main menu runs its own list navigation; matches read the pad through the engine.
-  // Runs on every screen except the main menu (which has its own list navigation). During a
-  // match it only ever sees DOM overlays (pause menu, result card) – the canvas game reads the
-  // pad itself – so there is no double-input.
-  const onBumper = useCallback((dir: -1 | 1) => {
-    window.dispatchEvent(new CustomEvent("pixelruggas:bumper", { detail: dir }));
-  }, []);
-  useGamepadNav("#screen-root", inMatch ? undefined : back, screen.name !== "menu", onBumper);
+  useGamepadNav("#screen-root", back, !inMatch && screen.name !== "menu");
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => {

@@ -210,7 +210,7 @@ export default function MainMenu({
           <p className="font-pixel text-base uppercase leading-none tracking-[0.12em] text-white drop-shadow-[3px_3px_0_#000]">
             Pixel<span className="text-green-400">Ruggas</span>
           </p>
-          <p className="mt-1.5 font-pixel text-[6px] uppercase tracking-[0.3em] text-slate-500">Pixel rugby union</p>
+          <p className="mt-1.5 font-pixel text-[8px] uppercase tracking-[0.26em] text-slate-400">Pixel rugby union</p>
         </div>
       </div>
 
@@ -302,10 +302,10 @@ export default function MainMenu({
         >
           <span className="font-pixel text-base" style={{ color: item.accent }}>{item.mono}</span>
         </div>
-        <h2 className="mt-4 font-pixel text-[13px] uppercase leading-relaxed text-white drop-shadow-[2px_2px_0_#000] md:text-[15px]">
+        <h2 className="mt-4 font-pixel text-[14px] uppercase leading-relaxed text-white drop-shadow-[2px_2px_0_#000] md:text-[17px]">
           {item.headline}
         </h2>
-        <p className="mt-3 font-pixel text-[7px] uppercase tracking-[0.18em] text-slate-300">
+        <p className="mt-3 font-pixel text-[9px] uppercase tracking-[0.16em] text-slate-200">
           {item.features.join("  ·  ")}
         </p>
         <div className="mt-5 flex justify-center">
@@ -317,9 +317,9 @@ export default function MainMenu({
             <button
               type="button"
               onClick={() => open(item)}
-              className="font-pixel flex items-center gap-2 rounded-full border border-white/30 bg-black/45 px-5 py-2.5 text-[8px] uppercase tracking-widest text-white backdrop-blur transition hover:border-white/70 hover:bg-black/70"
+              className="font-pixel flex items-center gap-2 rounded-full border border-white/30 bg-black/45 px-6 py-3 text-[10px] uppercase tracking-widest text-white backdrop-blur transition hover:border-white/70 hover:bg-black/70"
             >
-              <span className="grid h-4 w-4 place-items-center rounded-full bg-white text-[6px] text-black">
+              <span className="grid h-5 w-5 place-items-center rounded-full bg-white text-[8px] text-black">
                 {pad ? "A" : "↵"}
               </span>
               {item.cta}
@@ -336,17 +336,17 @@ export default function MainMenu({
         <button
           type="button"
           onClick={() => go({ name: "controls" })}
-          className="font-pixel text-[7px] uppercase tracking-widest text-slate-400 transition hover:text-white"
+          className="font-pixel text-[9px] uppercase tracking-widest text-slate-300 transition hover:text-white"
         >
           Controls / Accessibility
         </button>
         <div className="ml-auto flex items-center gap-3">
           {pad && (
-            <span className="font-pixel border border-green-400/40 bg-green-950/40 px-2 py-1 text-[6px] uppercase tracking-widest text-green-300">
+            <span className="font-pixel border border-green-400/40 bg-green-950/40 px-2 py-1 text-[8px] uppercase tracking-widest text-green-300">
               Controller
             </span>
           )}
-          <span className="font-pixel text-[6px] uppercase tracking-widest text-slate-500">
+          <span className="font-pixel text-[8px] uppercase tracking-widest text-slate-400">
             {COMPETITIONS.length} comps · {STADIUMS.length} grounds
           </span>
           <NowPlaying onOpen={() => go({ name: "music" })} />
@@ -365,10 +365,10 @@ export default function MainMenu({
 function Prompt({ badge, label }: { badge: string; label: string }) {
   return (
     <span className="flex items-center gap-1.5">
-      <span className="font-pixel grid h-5 min-w-[20px] place-items-center rounded-full border border-white/40 bg-black/50 px-1 text-[6px] text-white">
+      <span className="font-pixel grid h-6 min-w-[24px] place-items-center rounded-full border border-white/40 bg-black/50 px-1.5 text-[8px] text-white">
         {badge}
       </span>
-      <span className="font-pixel text-[7px] uppercase tracking-widest text-slate-400">{label}</span>
+      <span className="font-pixel text-[9px] uppercase tracking-widest text-slate-300">{label}</span>
     </span>
   );
 }

@@ -7,7 +7,7 @@ import type { Stadium, TeamData } from "@/game/types";
 
 export function Kicker({ children, color, className = "" }: { children: ReactNode; color?: string; className?: string }) {
   return (
-    <p className={`font-pixel text-[9px] uppercase tracking-[0.25em] ${className}`} style={{ color: color ?? "#facc15" }}>
+    <p className={`font-pixel text-[10px] uppercase tracking-[0.22em] ${className}`} style={{ color: color ?? "#facc15" }}>
       {children}
     </p>
   );
@@ -15,7 +15,7 @@ export function Kicker({ children, color, className = "" }: { children: ReactNod
 
 export function Title({ children, className = "" }: { children: ReactNode; className?: string }) {
   return (
-    <h1 className={`font-pixel text-lg uppercase leading-relaxed drop-shadow-[3px_3px_0_#000] md:text-2xl ${className}`}>{children}</h1>
+    <h1 className={`font-pixel mt-1 text-xl uppercase leading-relaxed drop-shadow-[3px_3px_0_#000] md:text-2xl ${className}`}>{children}</h1>
   );
 }
 
@@ -47,7 +47,7 @@ export function Panel({ children, className = "", accent }: { children: ReactNod
 
 export function Kbd({ children }: { children: ReactNode }) {
   return (
-    <span className="font-pixel mx-0.5 inline-block border-2 border-black bg-white px-1.5 py-1 align-middle text-[8px] text-black shadow-[2px_2px_0_#000]">
+    <span className="font-pixel mx-0.5 inline-block border-2 border-black bg-white px-1.5 py-1 align-middle text-[9px] text-black shadow-[2px_2px_0_#000]">
       {children}
     </span>
   );
@@ -151,5 +151,19 @@ export function ScreenHeader({ kicker, title, right }: { kicker: string; title: 
       </div>
       {right}
     </div>
+  );
+}
+
+
+/** Titled block with consistent spacing – use instead of ad-hoc <Kicker> + margins. */
+export function Section({ title, children, className = "", right }: { title: string; children: ReactNode; className?: string; right?: ReactNode }) {
+  return (
+    <section className={`px-panel p-4 ${className}`}>
+      <div className="mb-3 flex items-center justify-between gap-3 border-b border-white/10 pb-2">
+        <Kicker>{title}</Kicker>
+        {right}
+      </div>
+      {children}
+    </section>
   );
 }

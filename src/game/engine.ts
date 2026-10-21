@@ -1417,6 +1417,47 @@ export class RugbyEngine {
   }
 
   // ---------- passing & kicking ----------
+  /**
+   * Is the straight line from `from` to `to` clear of opposition? Returns the closest
+   * perpendicular distance any defender gets to the lane (bigger = safer).
+   */
+  private laneClearance(from: Vec2, to: Vec2, team: TeamIndex): number {
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const len = Math.max(0.001, hyp(dx, dy));
+    const ux = dx / len;
+    const uy = dy / len;
+    let worst = 99;
+    for (const o of this.players) {
+      if (!o.isOnField || o.team === team || o.down > 0) continue;
+      const rx = o.pos.x - from.x;
+      const ry = o.pos.y - from.y;
+      const along = rx * ux + ry * uy;
+      if (along < -0.5 || along > len + 0.5) continue; // not between passer and receiver
+      const across = Math.abs(rx * uy - ry * ux);
+      if (across < worst) worst = across;
+    }
+    return worst;
+  }
+
+  /** Where a pass to q would actually be delivered (leads the runner), kept legal. */
+  private passTargetFor(p: PlayerState, q: PlayerState): Vec2 {
+    const t = p.team;
+    const f = this.fx(t, p.pos.x);
+    const d0 = dist(p.pos, q.pos);
+    const speed = clamp(9 + d0 * 0.55, 10, 19);
+    const tf = d0 / speed;
+    const target = { x: q.pos.x + q.vel.x * tf, y: clamp(q.pos.y + q.vel.y * tf, 1.5, W - 1.5) };
+    // Never deliver the ball ahead of the passer – that is what makes a pass forward.
+    if (this.fx(t, target.x) > f - 0.4) target.x = this.wx(t, f - 0.4);
+    return target;
+  }
+
+  /**
+   * Choose the safest receiver on the requested side. Only players who are LEVEL OR
+   * BEHIND the passer are eligible, so a chosen pass can never be forward. Scoring favours
+   * a clear passing lane first, then a comfortable distance, then space to run into.
+   */
   pickReceiver(p: PlayerState, side: 1 | -1): PlayerState | null {
     const t = p.team;
     const f = this.fx(t, p.pos.x);
@@ -1426,17 +1467,27 @@ export class RugbyEngine {
       if (!q.isOnField) continue;
       if (q.team !== t || q.id === p.id || q.down > 0 || q.busy > 0) continue;
       const dy = (q.pos.y - p.pos.y) * side;
-      if (dy < 1.0) continue;
+      if (dy < 0.8) continue;
       const d = dist(q.pos, p.pos);
       if (d > 22) continue;
       const qf = this.fx(t, q.pos.x);
-      if (qf > f + 2.5) continue;
+      // Receivers running level or a stride ahead are fine to SELECT: the delivery point is
+      // always clamped behind the passer (passTargetFor), so the pass itself stays legal.
+      // Anything further ahead would need a backward pass the runner can't reach.
+      if (qf > f + 2.2) continue;
       const behind = f - qf;
-      const projY = q.pos.y + q.vel.y * (d / 14);
-      if (projY < 1.5 || projY > W - 1.5) continue;
-      const touchPenalty = q.pos.y < 6 || q.pos.y > W - 6 ? 4 : 0;
+      if (behind > 16) continue;
+      const target = this.passTargetFor(p, q);
+      if (target.y < 1.5 || target.y > W - 1.5) continue;
+      const lane = this.laneClearance(p.pos, target, t);
+      const touchPenalty = q.pos.y < 5 || q.pos.y > W - 5 ? 3 : 0;
       const score =
-        this.spaceAt(q.pos, t) - Math.abs(d - 8) * 0.25 - Math.max(0, behind - 6) * 0.3 + (qf > f - 1 ? -0.6 : 0) - touchPenalty;
+        Math.min(lane, 6) * 1.6                 // clear lane dominates
+        + this.spaceAt(q.pos, t) * 0.8          // room to run
+        - Math.abs(d - 7) * 0.35                // ~7m is the comfortable pass
+        - Math.max(0, behind - 5) * 0.4         // mild penalty for very deep options
+        - Math.max(0, -behind) * 0.6            // and for having to check the ball back to a flat runner
+        - touchPenalty;
       if (score > bestScore) {
         bestScore = score;
         best = q;
@@ -1466,8 +1517,7 @@ export class RugbyEngine {
     const d0 = dist(p.pos, q.pos);
     const speed = clamp(9 + d0 * 0.55, 10, 19);
     let tf = d0 / speed;
-    const target = { x: q.pos.x + q.vel.x * tf, y: clamp(q.pos.y + q.vel.y * tf, 1.5, W - 1.5) };
-    if (this.fx(t, target.x) > f - 0.4) target.x = this.wx(t, f - 0.4);
+    const target = this.passTargetFor(p, q);
     const pressure = this.nearestOpponentDist(p) < 2.0;
     const noise = pressure ? (this.rng() - 0.5) * (0.3 - p.attrs.handling * 0.0016) : (this.rng() - 0.5) * 0.04;
     const d = Math.max(1, dist(p.pos, target));
@@ -1699,10 +1749,50 @@ export class RugbyEngine {
   private checkCatches(): void {
     const b = this.ball;
     if (b.carrier !== null || b.pos.z > 2.4 || this.time < b.noCatchUntil) return;
+
+    // A pass belongs to its intended receiver. They catch it from a generous radius, and
+    // a defender can only take it by actually beating them to the ball and winning a
+    // handling contest – not just by standing somewhere near the flight path.
+    if (b.flight === "pass" && b.receiver !== null && b.lastTeam !== null) {
+      const rec = this.players[b.receiver];
+      const recOk = rec && rec.isOnField && rec.down <= 0 && rec.busy <= 0;
+      const dRec = recOk ? dist(rec.pos, b.pos) : 99;
+      // Receiver reaches for it from further out than a stray ball.
+      if (recOk && dRec < CATCH_R * 1.7) {
+        this.receive(rec);
+        return;
+      }
+      // Interception: a defender must be closer than the receiver AND within a tight radius,
+      // and only while the ball is still in the air near its target line.
+      let thief: PlayerState | null = null;
+      let bd = CATCH_R * 0.85;
+      for (const p of this.players) {
+        if (!p.isOnField || p.team === b.lastTeam || p.down > 0 || p.busy > 0) continue;
+        const d = dist(p.pos, b.pos);
+        if (d < bd && d < dRec - 0.4) {
+          bd = d;
+          thief = p;
+        }
+      }
+      if (thief) {
+        // Contest: the defender needs good hands to pluck a moving pass out of the air.
+        const pick = clamp(0.25 + (thief.attrs.handling - 70) / 150, 0.1, 0.65);
+        if (this.rng() < pick) this.receive(thief);
+        else {
+          // Fingertips – the ball is deflected to ground as a knock-on against the defender.
+          this.knockOn(thief);
+        }
+        return;
+      }
+      // Nobody else may claim a live pass until it has landed.
+      if (b.pos.z > 0.05) return;
+    }
+
+    // Loose ball (landed pass, kick, fumble): nearest player picks it up.
     let best: PlayerState | null = null;
     let bd = CATCH_R;
     for (const p of this.players) {
-      if (p.down > 0 || p.busy > 0) continue;
+      if (!p.isOnField || p.down > 0 || p.busy > 0) continue;
       if (p.id === b.passer && this.time < b.passerUntil) continue;
       const d = dist(p.pos, b.pos);
       if (d < bd) {
@@ -1719,6 +1809,9 @@ export class RugbyEngine {
     const pressure = this.nearestOpponentDist(p) < 2.0;
     let knock = 0.01 + (pressure ? 0.04 : 0) + Math.max(0, 85 - p.attrs.handling) / 600;
     if (b.flight === "kick" && inAir) knock += 0.04;
+    // A pass to the intended, unpressured receiver is the bread and butter of the game –
+    // it should stick. Pressure and poor hands still cause spills.
+    if (b.flight === "pass" && b.receiver === p.id && !pressure) knock *= 0.35;
     if (b.flight === "pass" && b.lastTeam !== null && b.lastTeam !== p.team) {
       knock = this.rng() < 0.5 ? 1 : 0.05;
     }
@@ -2156,26 +2249,21 @@ export class RugbyEngine {
   /** Stiff-arm: push the nearest defender away. Strength + evasion vs their tackling. */
   skillHandOff(p: PlayerState): void {
     if (this.skillCooldown > 0) return;
-    this.skillCooldown = 1.6;
+    this.skillCooldown = 0.85;
     p.anim = "bounce";
     p.animUntil = this.time + 0.45;
     const def = this.nearestOpponent(p);
-    if (!def || dist(def.pos, p.pos) > 2.1) {
+    if (!def || dist(def.pos, p.pos) > 2.6) {
       this.say("HAND OFF", "Nobody there!", "#94a3b8", 0.9);
       return;
     }
-    // Harder: lower base, bigger stat divisor, capped at 55%.
-    const chance = clamp(0.22 + (p.attrs.strength + p.attrs.evasion - (def.attrs.tackling + def.attrs.strength)) / 420, 0.06, 0.55);
+    const chance = clamp(0.38 + (p.attrs.strength + p.attrs.evasion - (def.attrs.tackling + def.attrs.strength)) / 300, 0.12, 0.9);
     if (this.rng() < chance) {
-      def.down = 1.0;
+      def.down = 1.3;
       def.anim = "dive";
       this.say("HAND OFF!", `${p.name} pushes ${def.name} away`, this.teams[p.team].color, 1.5);
       this.pushComment(`Great hand off from ${p.name}.`, p.team);
     } else {
-      // A failed fend leaves you slow and exposed for a moment.
-      p.busy = Math.max(p.busy, 0.35);
-      p.vel.x *= 0.3;
-      p.vel.y *= 0.3;
       this.say("HAND OFF", "Held up!", "#94a3b8", 0.9);
     }
   }
@@ -2183,30 +2271,25 @@ export class RugbyEngine {
   /** Power through contact – forwards are far better at this than backs. */
   skillBounce(p: PlayerState): void {
     if (this.skillCooldown > 0) return;
-    this.skillCooldown = 1.8;
+    this.skillCooldown = 1.0;
     p.anim = "bounce";
     p.animUntil = this.time + 0.5;
     const def = this.nearestOpponent(p);
-    if (!def || dist(def.pos, p.pos) > 2.2) {
+    if (!def || dist(def.pos, p.pos) > 2.8) {
       this.say("BOUNCE", "No contact to win", "#94a3b8", 0.9);
       return;
     }
-    // Harder: backs get a real penalty, cap 50%.
-    const forwardBonus = p.isForward ? 0.10 : -0.14;
-    const chance = clamp(0.20 + forwardBonus + (p.attrs.strength - def.attrs.tackling) / 330, 0.05, 0.5);
+    const forwardBonus = p.isForward ? 0.16 : -0.05;
+    const chance = clamp(0.34 + forwardBonus + (p.attrs.strength - def.attrs.tackling) / 230, 0.1, 0.9);
     if (this.rng() < chance) {
-      def.down = 1.2;
+      def.down = 1.5;
       def.anim = "dive";
-      // A successful bounce carries the runner a little way through the hole.
+      // A successful bounce carries the runner forward through the hole.
       const dir = this.teams[p.team].dir;
-      p.pos.x = clamp(p.pos.x + dir * 0.9, 0.5, L - 0.5);
+      p.pos.x = clamp(p.pos.x + dir * 1.6, 0.5, L - 0.5);
       this.say("BOUNCED OFF!", `${p.name} powers through ${def.name}`, this.teams[p.team].color, 1.5);
       this.pushComment(`${p.name} bounces the tackler and surges forward!`, p.team);
     } else {
-      // Stopped: you stall and the defender has you lined up.
-      p.busy = Math.max(p.busy, 0.45);
-      p.vel.x *= 0.2;
-      p.vel.y *= 0.2;
       this.say("BOUNCE", "Stopped in the tackle", "#94a3b8", 0.9);
     }
   }
@@ -2214,24 +2297,19 @@ export class RugbyEngine {
   /** Sharp lateral cut. Backs with high evasion beat defenders cleanly. */
   skillSideStep(p: PlayerState, side: -1 | 1): void {
     if (this.skillCooldown > 0) return;
-    this.skillCooldown = 1.4;
+    this.skillCooldown = 0.8;
     p.anim = "dive";
     p.animUntil = this.time + 0.35;
-    // Smaller lateral shift than before; agility matters.
-    const shift = (1.3 + p.attrs.evasion / 110);
+    // Move sharply across the field; the engine clamps to the pitch.
+    const shift = 2.4 + p.attrs.evasion / 55;
     p.pos.y = clamp(p.pos.y + side * shift, 0.8, W - 0.8);
-    p.vel.y = side * Math.min(4, shift * 1.6);
-    // stepping bleeds forward momentum so you cannot step at full tilt forever
-    p.vel.x *= 0.75;
+    p.vel.y = side * Math.min(6, shift * 2);
     const def = this.nearestOpponent(p);
     const label = side < 0 ? "STEP LEFT" : "STEP RIGHT";
-    if (def && dist(def.pos, p.pos) < 3.2) {
-      // Harder: lower base and cap, forwards really struggle, and a defender who is
-      // already square to you (close) is tougher to beat.
-      const close = dist(def.pos, p.pos) < 1.6 ? -0.08 : 0;
-      const chance = clamp(0.24 + close + (p.attrs.evasion - def.attrs.tackling) / 300 + (p.isForward ? -0.16 : 0.04), 0.06, 0.6);
+    if (def && dist(def.pos, p.pos) < 4.2) {
+      const chance = clamp(0.4 + (p.attrs.evasion - def.attrs.tackling) / 220 + (p.isForward ? -0.12 : 0.08), 0.12, 0.92);
       if (this.rng() < chance) {
-        def.down = 0.9;
+        def.down = 1.1;
         def.anim = "dive";
         this.say(`${label}!`, `${p.name} beats ${def.name}`, this.teams[p.team].color, 1.4);
         this.pushComment(`Lovely footwork – ${p.name} steps clean past the defender.`, p.team);
