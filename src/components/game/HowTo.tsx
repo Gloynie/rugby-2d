@@ -5,12 +5,12 @@ import { Kbd, Kicker, Panel, ScreenHeader, Scroll } from "./ui";
 
 const LAWS: [string, string][] = [
   ["Scoring", "Try 5 pts, conversion 2, penalty goal 3, drop goal 3. Carry the ball over the line and dive (Action) or keep running to ground it."],
-  ["Passing", "The ball may only travel backwards. A forward pass gives a scrum to the opposition."],
+  ["Passing", "The ball may only travel backwards. The marked W/S receivers are the exact targets: green lane = safe, amber = pressured. The pass follows its designated receiver as they run."],
   ["Knock-on", "Dropping the ball forwards – more likely under pressure or while catching a high ball – concedes a scrum."],
   ["Tackle & ruck", "After a tackle a ruck forms. Support players arriving first secure the ball; arrive alone against numbers and you can be turned over or penalised for holding on."],
   ["Offside", "At a ruck defenders stay behind the red line and attackers behind the blue line until the ball is out. You get a short grace period – GET ONSIDE!"],
   ["Kicking & touch", "Kicked directly into touch from outside your 22 = lineout back where you kicked it. From inside your 22 you gain the ground."],
-  ["Set pieces", "Scrums and lineouts are contested automatically using your pack and jumpers. The put-in side usually wins – not always."],
+  ["Set pieces", "Scrums use a three-shove timing contest. At lineouts choose 4–7 players, front/middle/back, then clean ball, short ball or a driving maul. Jumping, handling, strength and whether the defence reads the call decide the winner."],
   ["Restarts", "The conceding team restarts with a kick-off from halfway. Balls made dead in-goal lead to a goal-line drop-out."],
   ["Penalties", "High tackles, collapsed scrums and ruck infringements give penalties: kick at goal, kick to the corner, or tap and run."],
   ["Player pace & power", "Pace is permanent and position-based: wings and fullbacks are the quickest runners, centres and halfbacks are agile, while props and locks are slower but far stronger in contact."],
@@ -34,11 +34,13 @@ export default function HowToScreen({ bindings }: { bindings: Bindings }) {
               <li>{k(bindings.action)} tackle · dive for the line · take a kick-off · stop the goal-kick meter · skip replays</li>
               <li>{k(bindings.switch)} switch to the nearest defender</li>
               <li>{k(bindings.opt1)} {k(bindings.opt2)} {k(bindings.opt3)} penalty: goal / touch / tap</li>
+              <li>Lineout: {k(bindings.left)} / {k(bindings.right)} choose · {k(bindings.action)} confirm numbers, target and play</li>
               <li>{k(bindings.pause)} pause · {k(bindings.help)} hide the on-screen help</li>
             </ul>
             <Kicker className="mt-6">Tips</Kicker>
             <ul className="mt-2 list-disc space-y-1 pl-5 text-slate-200">
-              <li>Draw a defender before you pass – your support runner hits the gap at pace.</li>
+              <li>Draw a defender before you pass. Green dotted lanes are safe; amber lanes are contested. The W/S marker is the exact receiver.</li>
+              <li>A short lineout is safer and harder to read; a seven-man lineout creates the strongest maul.</li>
               <li>Deep in your 22, hold kick and clear to touch. The ball can go out on the full from inside the 22.</li>
               <li>Use wide backs for pace and stepping; use powerful forwards close to the ruck to win collisions.</li>
               <li>On the goal-kick meter set power past the white marker, then stop the aim marker in the green zone.</li>

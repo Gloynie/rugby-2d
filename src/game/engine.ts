@@ -141,6 +141,24 @@ export interface PenaltyState {
   timer: number;
 }
 
+export type LineoutTarget = "front" | "middle" | "back";
+export type LineoutPlay = "clean" | "short" | "maul";
+export type LineoutStage = "numbers" | "target" | "play" | "ready";
+
+export interface LineoutState {
+  team: TeamIndex;
+  x: number;
+  side: number;
+  numbers: 4 | 5 | 6 | 7;
+  target: LineoutTarget;
+  play: LineoutPlay;
+  stage: LineoutStage;
+  navCooldown: number;
+  aiTimer: number;
+  /** Defensive pod guesses the throw location; matching it makes a steal likelier. */
+  defenceTarget: LineoutTarget;
+}
+
 export interface RestartInfo {
   kind: "kickoff" | "dropout" | "scrum" | "lineout" | "penalty";
   team: TeamIndex;
@@ -228,6 +246,7 @@ export class RugbyEngine {
   ruck: RuckState | null = null;
   goalKick: GoalKickState | null = null;
   penalty: PenaltyState | null = null;
+  lineout: LineoutState | null = null;
   kickCharge = 0;
   charging = false;
   inGoalTimer = 0;
@@ -753,13 +772,11 @@ export class RugbyEngine {
         this.updateRuck(dt, input, remoteInput);
         break;
       case "scrum":
-      case "lineout":
         this.tickClock(dt);
         this.phaseTimer -= dt;
-        if (this.phase === "scrum" && this.scrumInteractive) {
+        if (this.scrumInteractive) {
           // The director normally resolves this via the timing mini-game. If no one does
-          // (headless simulation, disconnected client), fall back to a normal scrum so
-          // the match can never soft-lock here.
+          // (headless simulation, disconnected client), fall back to a normal scrum.
           this.scrumWait += dt;
           if (this.scrumWait > 9) {
             this.scrumInteractive = false;
@@ -768,10 +785,10 @@ export class RugbyEngine {
           }
           break;
         }
-        if (this.phaseTimer <= 0) {
-          if (this.phase === "scrum") this.resolveScrum();
-          else this.resolveLineout();
-        }
+        if (this.phaseTimer <= 0) this.resolveScrum();
+        break;
+      case "lineout":
+        this.updateLineout(dt, input, remoteInput);
         break;
       case "try":
         this.phaseTimer -= dt;
@@ -823,6 +840,7 @@ export class RugbyEngine {
     this.ruck = null;
     this.goalKick = null;
     this.penalty = null;
+    this.lineout = null;
     this.charging = false;
     this.kickCharge = 0;
   }
@@ -1204,15 +1222,35 @@ export class RugbyEngine {
       if (p.id === this.controlled) {
         const l = hyp(input.moveX, input.moveY);
         d = { dir: l > 0 ? { x: input.moveX / l, y: input.moveY / l } : { x: 0, y: 0 }, sprint: input.sprint };
+        d = this.assistPassReceiver(p, d);
       } else if (remoteInput && p.id === this.remoteControlled) {
         const l = hyp(remoteInput.moveX, remoteInput.moveY);
         d = { dir: l > 0 ? { x: remoteInput.moveX / l, y: remoteInput.moveY / l } : { x: 0, y: 0 }, sprint: remoteInput.sprint };
+        d = this.assistPassReceiver(p, d);
       } else {
         d = this.aiDecide(p, ctx);
         if (this.phase !== "play") return;
       }
       this.movePlayer(p, d.dir, d.sprint, dt);
     }
+  }
+
+  /** Briefly blend the selected receiver toward their incoming pass. */
+  private assistPassReceiver(p: PlayerState, decision: Decision): Decision {
+    const b = this.ball;
+    if (b.flight !== "pass" || b.receiver !== p.id || b.carrier !== null) return decision;
+    const target = b.target ?? { x: b.pos.x, y: b.pos.y };
+    const dx = target.x - p.pos.x;
+    const dy = target.y - p.pos.y;
+    const len = hyp(dx, dy);
+    if (len < 0.2) return { ...decision, sprint: false };
+    // The closer / lower the ball, the stronger the assist. Player direction still contributes.
+    const assist = b.pos.z < 2.5 ? 0.82 : 0.58;
+    const tx = dx / len, ty = dy / len;
+    const mx = decision.dir.x * (1 - assist) + tx * assist;
+    const my = decision.dir.y * (1 - assist) + ty * assist;
+    const ml = Math.max(0.001, hyp(mx, my));
+    return { dir: { x: mx / ml, y: my / ml }, sprint: decision.sprint || len > 2.5 };
   }
 
   private movePlayer(p: PlayerState, desired: Vec2, sprint: boolean, dt: number): void {
@@ -1533,6 +1571,9 @@ export class RugbyEngine {
     b.lastPlayer = p.id;
     b.passer = p.id;
     b.passerUntil = this.time + 0.5;
+    // Reuse kickFromX as the fixed throw line. Dynamic receiver tracking is clamped behind it,
+    // so steering the pass can never turn a legal throw into a forward pass.
+    b.kickFromX = p.pos.x;
     b.noCatchUntil = this.time + 0.08;
     b.bounced = false;
     b.target = target;
@@ -1653,6 +1694,36 @@ export class RugbyEngine {
   private updateBall(dt: number): void {
     const b = this.ball;
     const c = this.carrier();
+
+    // Receiver-locked passing: follow the player the pass was assigned to rather than the
+    // patch of grass they occupied at release. The correction is smooth (not teleporting),
+    // and the destination is always kept behind the original throw line.
+    if (b.flight === "pass" && b.receiver !== null && b.lastTeam !== null && b.carrier === null) {
+      const rec = this.players[b.receiver];
+      if (rec?.isOnField && rec.down <= 0) {
+        const t = b.lastTeam;
+        const originF = this.fx(t, b.kickFromX);
+        const speed = Math.max(9, hyp(b.vel.x, b.vel.y));
+        const d = dist(rec.pos, b.pos);
+        // Lead only a little: enough to meet a running receiver, not enough to curve wildly.
+        const lead = clamp((d / speed) * 0.28, 0, 0.28);
+        const target = {
+          x: rec.pos.x + rec.vel.x * lead,
+          y: clamp(rec.pos.y + rec.vel.y * lead, 1.2, W - 1.2),
+        };
+        if (this.fx(t, target.x) > originF - 0.15) target.x = this.wx(t, originF - 0.15);
+        b.target = target;
+        const dx = target.x - b.pos.x;
+        const dy = target.y - b.pos.y;
+        const len = Math.max(0.01, hyp(dx, dy));
+        const desiredX = (dx / len) * speed;
+        const desiredY = (dy / len) * speed;
+        // Strong enough to absorb route changes, soft enough that the pass still looks physical.
+        const steer = Math.min(1, dt * 10);
+        b.vel.x += (desiredX - b.vel.x) * steer;
+        b.vel.y += (desiredY - b.vel.y) * steer;
+      }
+    }
     if (c) {
       b.pos.x = c.pos.x + Math.cos(c.facing) * 0.35;
       b.pos.y = c.pos.y + Math.sin(c.facing) * 0.35;
@@ -1758,7 +1829,7 @@ export class RugbyEngine {
       const recOk = rec && rec.isOnField && rec.down <= 0 && rec.busy <= 0;
       const dRec = recOk ? dist(rec.pos, b.pos) : 99;
       // Receiver reaches for it from further out than a stray ball.
-      if (recOk && dRec < CATCH_R * 1.7) {
+      if (recOk && dRec < CATCH_R * 2.05) {
         this.receive(rec);
         return;
       }
@@ -2363,59 +2434,224 @@ export class RugbyEngine {
     this.teams[other(winner)].lineF = this.fx(winner, r.x) + 6;
   }
 
+  /** Players used in a lineout of the requested length (hooker throws, 9 waits). */
+  private lineoutParticipants(numbers: number): number[] {
+    const bySize: Record<number, number[]> = {
+      4: [4, 5, 6, 8],
+      5: [1, 4, 5, 6, 8],
+      6: [1, 3, 4, 5, 6, 8],
+      7: [1, 3, 4, 5, 6, 7, 8],
+    };
+    return bySize[numbers] ?? bySize[7];
+  }
+
+  /** Rebuild both teams around the currently selected lineout numbers. */
+  private placeLineoutFormation(call: LineoutState): void {
+    const team = call.team;
+    const def = other(team);
+    const fM = clamp(this.fx(team, call.x), 15, 105);
+    const inward = call.side === 0 ? 1 : -1;
+    const ly = (m: number) => call.side + inward * m;
+    const participants = this.lineoutParticipants(call.numbers);
+
+    // Line players, evenly spaced. The defending line matches the attacking numbers.
+    participants.forEach((n, i) => {
+      this.place(this.pl(team, n), team, fM - 0.7, ly(5.5 + i * 1.75));
+      this.place(this.pl(def, n), team, fM + 0.7, ly(5.5 + i * 1.75));
+    });
+    // Thrower and receivers.
+    this.place(this.pl(team, 2), team, fM, ly(0.7));
+    this.place(this.pl(def, 2), team, fM + 1.6, ly(3.0));
+    const tail = 6.5 + participants.length * 1.75;
+    this.place(this.pl(team, 9), team, fM - 2.5, ly(tail));
+    this.place(this.pl(def, 9), team, fM + 2.5, ly(tail + 1.5));
+
+    // Everyone not in the line forms the backs / reduced-lineout attack 10m away.
+    const excluded = new Set([...participants, 2, 9]);
+    const outside = Array.from({ length: 15 }, (_, i) => i + 1).filter((n) => !excluded.has(n));
+    outside.forEach((n, i) => {
+      const spread = clamp(8 + i * (54 / Math.max(1, outside.length - 1)), 6, 62);
+      const depth = n === 15 ? 22 : 10 + (i % 2) * 2;
+      this.place(this.pl(team, n), team, fM - depth, ly(spread));
+      this.place(this.pl(def, n), team, fM + depth, ly(spread));
+    });
+    for (const p of this.players) if (p.isOnField) p.busy = 9;
+    this.ball.pos = { x: this.wx(team, fM), y: ly(0.7), z: 1 };
+  }
+
   private setupLineout(team: TeamIndex, x: number, side: number): void {
     this.resetPlayers();
-    const def = other(team);
     const fM = clamp(this.fx(team, x), 15, 105);
-    const inward = side === 0 ? 1 : -1;
-    const ly = (m: number) => side + inward * m;
     this.restart = { kind: "lineout", team, x: this.wx(team, fM), y: side };
-    const jumpers = [1, 3, 4, 5, 6, 7, 8];
-    jumpers.forEach((n, i) => {
-      this.place(this.pl(team, n), team, fM - 0.7, ly(5.5 + i * 1.4));
-      this.place(this.pl(def, n), team, fM + 0.7, ly(5.5 + i * 1.4));
-    });
-    this.place(this.pl(team, 2), team, fM, ly(0.6));
-    this.place(this.pl(def, 2), team, fM + 1.5, ly(3));
-    this.place(this.pl(team, 9), team, fM - 2.5, ly(13));
-    this.place(this.pl(def, 9), team, fM + 2.5, ly(15));
-    const backs: [number, number][] = [[10, 20], [12, 28], [13, 36], [14, 46], [11, 10], [15, 30]];
-    for (const [n, m] of backs) {
-      this.place(this.pl(team, n), team, fM - 10 - (n === 15 ? 12 : 0), ly(m));
-      this.place(this.pl(def, n), team, fM + 10 + (n === 15 ? 12 : 0), ly(m));
-    }
-    for (const p of this.players) p.busy = 9;
+    this.lineout = {
+      team,
+      x: this.wx(team, fM),
+      side,
+      numbers: 7,
+      target: "middle",
+      play: "clean",
+      stage: "numbers",
+      navCooldown: 0,
+      aiTimer: 1.1,
+      defenceTarget: (["front", "middle", "back"] as LineoutTarget[])[Math.floor(this.rng() * 3)],
+    };
+    this.placeLineoutFormation(this.lineout);
     this.ball.carrier = null;
-    this.ball.pos = { x: this.wx(team, fM), y: ly(0.6), z: 1 };
     this.phase = "lineout";
-    this.phaseTimer = 1.6;
+    // Selection screens do not auto-expire for a human caller; CPU confirms after aiTimer.
+    this.phaseTimer = 1.0;
     this.possession = team;
-    this.say("LINEOUT", `${this.teamName(team)} throw`, "#ffffff", 2);
+    this.say("LINEOUT", `${this.teamName(team)} to call`, "#ffffff", 2);
     if (this.userTeam !== null) this.controlled = this.pl(this.userTeam, 9).id;
+  }
+
+  /** Move the current lineout option with left/right and confirm it with Action. */
+  private updateLineout(dt: number, input: InputFrame, remoteInput: InputFrame | null): void {
+    this.tickClock(dt);
+    const call = this.lineout;
+    if (!call) {
+      // Compatibility fallback for old snapshots / saves.
+      this.resolveLineout();
+      return;
+    }
+    const teamInput = call.team === this.userTeam ? input : call.team === this.remoteTeam ? remoteInput : null;
+
+    if (call.stage !== "ready" && teamInput) {
+      call.navCooldown = Math.max(0, call.navCooldown - dt);
+      const axis = teamInput.moveX;
+      if (Math.abs(axis) > 0.45 && call.navCooldown <= 0) {
+        const dir = axis > 0 ? 1 : -1;
+        call.navCooldown = 0.18;
+        if (call.stage === "numbers") {
+          call.numbers = clamp(call.numbers + dir, 4, 7) as 4 | 5 | 6 | 7;
+          this.placeLineoutFormation(call);
+        } else if (call.stage === "target") {
+          const opts: LineoutTarget[] = ["front", "middle", "back"];
+          call.target = opts[(opts.indexOf(call.target) + dir + opts.length) % opts.length];
+        } else {
+          const opts: LineoutPlay[] = ["clean", "short", "maul"];
+          call.play = opts[(opts.indexOf(call.play) + dir + opts.length) % opts.length];
+        }
+      }
+      // Number keys provide a fast call as well: 1/2/3 map to the first three choices.
+      if (call.stage === "target") {
+        if (teamInput.option1) call.target = "front";
+        if (teamInput.option2) call.target = "middle";
+        if (teamInput.option3) call.target = "back";
+      } else if (call.stage === "play") {
+        if (teamInput.option1) call.play = "clean";
+        if (teamInput.option2) call.play = "short";
+        if (teamInput.option3) call.play = "maul";
+      }
+      if (teamInput.action) {
+        if (call.stage === "numbers") call.stage = "target";
+        else if (call.stage === "target") call.stage = "play";
+        else {
+          call.stage = "ready";
+          this.placeLineoutFormation(call);
+          this.phaseTimer = 0.75;
+          this.say("LINEOUT CALL", `${call.numbers} men · ${call.target} · ${call.play}`, this.teams[call.team].color, 1.2);
+        }
+      }
+      return;
+    }
+
+    if (call.stage !== "ready") {
+      // CPU lineout call: varies numbers, target and play by field position.
+      call.aiTimer -= dt;
+      if (call.aiTimer > 0) return;
+      call.numbers = ([4, 5, 6, 7] as const)[Math.floor(this.rng() * 4)];
+      call.target = (["front", "middle", "back"] as LineoutTarget[])[Math.floor(this.rng() * 3)];
+      const attacking = this.fx(call.team, call.x) > 82;
+      call.play = attacking && this.rng() < 0.48 ? "maul" : this.rng() < 0.24 ? "short" : "clean";
+      call.stage = "ready";
+      this.placeLineoutFormation(call);
+      this.phaseTimer = 0.75;
+      this.say("LINEOUT CALL", `${call.numbers} men · ${call.target} · ${call.play}`, this.teams[call.team].color, 1.2);
+      return;
+    }
+
+    this.phaseTimer -= dt;
+    if (this.phaseTimer <= 0) this.resolveLineout();
   }
 
   private resolveLineout(): void {
     const r = this.restart;
     if (!r) return;
+    const call = this.lineout ?? {
+      team: r.team, x: r.x, side: r.y, numbers: 7 as const, target: "middle" as const,
+      play: "clean" as const, stage: "ready" as const, navCooldown: 0, aiTimer: 0,
+      defenceTarget: "middle" as const,
+    };
     const att = r.team;
     const def = other(att);
-    const jump = (t: TeamIndex) => (this.pl(t, 4).attrs.strength + this.pl(t, 5).attrs.strength) / 2;
-    const pWin = clamp(0.82 + (jump(att) - jump(def)) * 0.004, 0.55, 0.95);
+    const participants = this.lineoutParticipants(call.numbers);
+    // Props are lifters, not primary jumpers. Use the specialist target for each zone.
+    const preferred = call.target === "front" ? 4 : call.target === "middle" ? 5 : 8;
+    const jumperNo = participants.includes(preferred) ? preferred : participants[Math.floor((participants.length - 1) / 2)];
+    const defenderNo = participants.includes(preferred) ? preferred : participants[Math.floor((participants.length - 1) / 2)];
+    const jumper = this.pl(att, jumperNo);
+    const defender = this.pl(def, defenderNo);
+    // Locks receive a height bonus; back throws are harder, front/short throws safer.
+    const heightBonus = jumperNo === 4 || jumperNo === 5 ? 7 : jumperNo === 8 ? 3 : 0;
+    const defHeight = defenderNo === 4 || defenderNo === 5 ? 7 : defenderNo === 8 ? 3 : 0;
+    const attackQuality = jumper.attrs.handling * 0.45 + jumper.attrs.strength * 0.55 + heightBonus;
+    const defenceQuality = defender.attrs.handling * 0.4 + defender.attrs.strength * 0.6 + defHeight;
+    const read = call.defenceTarget === call.target;
+    const targetMod = call.target === "front" ? 0.08 : call.target === "back" ? -0.035 : 0.02;
+    const numbersMod = (7 - call.numbers) * 0.012; // shorter line is harder to read
+    const playMod = call.play === "short" ? 0.10 : call.play === "maul" ? -0.015 : 0;
+    const pWin = clamp(0.76 + (attackQuality - defenceQuality) * 0.004 + targetMod + numbersMod + playMod - (read ? 0.07 : 0), 0.48, 0.97);
     const winner: TeamIndex = this.rng() < pWin ? att : def;
     this.teamStats[winner].lineoutsWon++;
-    for (const p of this.players) { if (p.isOnField) p.busy = p.isForward ? 0.6 : 0; }
+    for (const p of this.players) if (p.isOnField) p.busy = p.isForward ? 0.55 : 0;
+
     if (winner !== att) {
-      this.say("LINEOUT STOLEN!", `${this.teamName(def)} win it in the air`, "#fbbf24");
-      this.pushComment(`Lineout stolen! ${this.teamName(def)} against the throw.`, def);
-    } else this.say("Lineout won", `${this.teamName(att)} ball`, "#ffffff", 1.2);
-    const nine = this.pl(winner, 9);
-    nine.busy = 0;
-    const wdir = this.teams[winner].dir;
+      this.say("LINEOUT STOLEN!", `${this.teamName(def)} read the ${call.target} throw`, "#fbbf24");
+      this.pushComment(`Lineout stolen at the ${call.target}! ${this.teamName(def)} against the throw.`, def);
+      const nine = this.pl(def, 9);
+      nine.busy = 0;
+      const inward = r.y === 0 ? 1 : -1;
+      nine.pos = { x: clamp(r.x - this.teams[def].dir * 2.5, 1, L - 1), y: r.y + inward * (7 + call.numbers * 1.7) };
+      this.giveBallTo(nine);
+      this.phase = "play";
+      this.lineout = null;
+      this.teams[att].lineF = this.fx(def, r.x) + 10;
+      return;
+    }
+
     const inward = r.y === 0 ? 1 : -1;
-    nine.pos = { x: clamp(r.x - wdir * 2.5, 1, L - 1), y: r.y + inward * 12 };
-    this.giveBallTo(nine);
+    const dir = this.teams[att].dir;
+    if (call.play === "maul") {
+      // Bigger lineouts make stronger mauls; pack strength decides the metres won.
+      let atk = 0, dfs = 0;
+      for (const n of participants) { atk += this.pl(att, n).attrs.strength; dfs += this.pl(def, n).attrs.strength; }
+      const gain = clamp(3.5 + call.numbers * 0.5 + (atk - dfs) / 45 + this.rng() * 2.5, 2, 12);
+      const carrier = this.pl(att, 8);
+      carrier.busy = 0;
+      carrier.pos = { x: clamp(r.x + dir * gain, 1, L - 1), y: r.y + inward * 8 };
+      this.giveBallTo(carrier);
+      this.say("DRIVING MAUL!", `${this.teamName(att)} rumble ${Math.round(gain)} metres`, this.teams[att].color, 1.5);
+      this.pushComment(`The maul is set – ${this.teamName(att)} drive ${Math.round(gain)} metres.`, att);
+      this.teams[def].lineF = this.fx(att, carrier.pos.x) + 2;
+    } else if (call.play === "short") {
+      const carrier = jumper;
+      carrier.busy = 0;
+      carrier.pos = { x: clamp(r.x + dir * 1.8, 1, L - 1), y: r.y + inward * 5.5 };
+      this.giveBallTo(carrier);
+      this.say("SHORT BALL!", `${jumper.name} takes it at the front`, this.teams[att].color, 1.2);
+      this.teams[def].lineF = this.fx(att, r.x) + 7;
+    } else {
+      const nine = this.pl(att, 9);
+      nine.busy = 0;
+      nine.pos = { x: clamp(r.x - dir * 2.5, 1, L - 1), y: r.y + inward * (7 + call.numbers * 1.7) };
+      this.giveBallTo(nine);
+      this.say("LINEOUT WON", `${call.target} ball off the top`, "#ffffff", 1.2);
+      this.teams[def].lineF = this.fx(att, r.x) + 10;
+    }
+    this.pushComment(`${this.teamName(att)} win a ${call.numbers}-man lineout at the ${call.target}.`, att);
     this.phase = "play";
-    this.teams[other(winner)].lineF = this.fx(winner, r.x) + 10;
+    this.lineout = null;
   }
 
   // ---------- penalties & goal kicks ----------

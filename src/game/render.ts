@@ -2058,6 +2058,77 @@ export class Renderer {
     if (sub) this.text(sub, this.bufW / 2, y + 17, { align: "center", color: "#facc15" });
   }
 
+  private drawLineoutCall(m: RugbyEngine): void {
+    const call = m.lineout;
+    if (!call) {
+      this.banner(`LINEOUT - ${m.teamName(m.restart?.team ?? 0).toUpperCase()} THROW`, "");
+      return;
+    }
+    const localCaller = call.team === m.userTeam || call.team === m.remoteTeam;
+    const w = 398;
+    const h = call.stage === "ready" ? 74 : 146;
+    const x = Math.round(this.bufW / 2 - w / 2);
+    const y = Math.round(this.bufH / 2 - h / 2);
+    const accent = m.teams[call.team].color;
+    this.panel(x, y, w, h, { fill: "rgba(4,8,18,0.94)", accent });
+    this.text(`${m.teamName(call.team).toUpperCase()} LINEOUT`, x + 14, y + 10, { color: "#facc15", size: 10 });
+    this.text(`${call.numbers} MEN`, x + w - 14, y + 10, { align: "right", color: "#cbd5e1", size: 8 });
+
+    if (call.stage === "ready") {
+      this.text(`${call.target.toUpperCase()}  •  ${call.play === "clean" ? "CLEAN BALL" : call.play.toUpperCase()}`, this.bufW / 2, y + 34, {
+        align: "center", color: "#ffffff", size: 10,
+      });
+      this.text("THROWING NOW...", this.bufW / 2, y + 53, { align: "center", color: accent, size: 7 });
+      return;
+    }
+
+    const labels = ["1  NUMBERS", "2  TARGET", "3  PLAY"];
+    const currentStage = call.stage === "numbers" ? 0 : call.stage === "target" ? 1 : 2;
+    labels.forEach((label, i) => {
+      this.text(label, x + 16 + i * 126, y + 31, {
+        color: i === currentStage ? "#facc15" : i < currentStage ? "#22c55e" : "#64748b", size: 7,
+      });
+    });
+    this.rect(x + 14, y + 43, w - 28, 1, "rgba(255,255,255,0.12)");
+
+    const drawOptions = (opts: string[], active: string, yy: number) => {
+      const gap = 7;
+      const widths = opts.map((o) => this.measure(o, 8) + 20);
+      const total = widths.reduce((a, b) => a + b, 0) + gap * (opts.length - 1);
+      let ox = x + (w - total) / 2;
+      opts.forEach((o, i) => {
+        const selected = o.toLowerCase() === active.toLowerCase();
+        this.rect(ox, yy, widths[i], 24, selected ? "rgba(250,204,21,0.18)" : "rgba(15,23,42,0.88)");
+        this.rect(ox, yy, widths[i], 1, selected ? "#facc15" : "#334155");
+        this.rect(ox, yy + 23, widths[i], 1, selected ? "#facc15" : "#334155");
+        this.text(o, ox + widths[i] / 2, yy + 8, { align: "center", color: selected ? "#fde68a" : "#cbd5e1", size: 8 });
+        ox += widths[i] + gap;
+      });
+    };
+
+    if (call.stage === "numbers") drawOptions(["4", "5", "6", "7"], String(call.numbers), y + 56);
+    else if (call.stage === "target") drawOptions(["FRONT", "MIDDLE", "BACK"], call.target, y + 56);
+    else drawOptions(["CLEAN", "SHORT", "MAUL"], call.play, y + 56);
+
+    // A tiny lineout diagram – number of dots changes live with the selection.
+    const dotsY = y + 91;
+    const dotStart = this.bufW / 2 - ((call.numbers - 1) * 13) / 2;
+    for (let i = 0; i < call.numbers; i++) {
+      this.rect(dotStart + i * 13 - 3, dotsY, 7, 7, i === 0 || i === call.numbers - 1 ? accent : "#f8fafc");
+      this.rect(dotStart + i * 13 - 2, dotsY - 4, 5, 4, "#cbd5e1");
+    }
+
+    if (localCaller) {
+      const left = keyLabel(this.bindings.left, true);
+      const right = keyLabel(this.bindings.right, true);
+      const action = keyLabel(this.bindings.action, true);
+      this.text(`${left}/${right} CHANGE`, x + 16, y + 123, { color: "#94a3b8", size: 7 });
+      this.text(`${action} CONFIRM`, x + w - 16, y + 123, { align: "right", color: "#facc15", size: 7 });
+    } else {
+      this.text("OPPOSITION CALLING...", this.bufW / 2, y + 123, { align: "center", color: "#94a3b8", size: 7 });
+    }
+  }
+
   private drawPhaseUI(m: RugbyEngine): void {
     const k = (c: string) => keyLabel(c, true);
     if ((m.phase === "kickoff" || m.phase === "dropout") && m.restart) {
@@ -2067,7 +2138,7 @@ export class Renderer {
     } else if (m.phase === "scrum") {
       this.banner(`SCRUM - ${m.teamName(m.restart?.team ?? 0).toUpperCase()} BALL`, "");
     } else if (m.phase === "lineout") {
-      this.banner(`LINEOUT - ${m.teamName(m.restart?.team ?? 0).toUpperCase()} THROW`, "");
+      this.drawLineoutCall(m);
     } else if (m.phase === "penaltyChoice" && m.penalty) {
       const pen = m.penalty;
       const mine = m.userTeam === pen.team;
