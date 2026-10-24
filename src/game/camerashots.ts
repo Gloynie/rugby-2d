@@ -77,3 +77,58 @@ export const CameraShots = {
     }
   },
 };
+
+/**
+ * Crowd reaction shot: the stands going up after a score. `tint` is the scoring team's colour
+ * so the celebrating end of the ground reads as their supporters.
+ */
+export function crowdReaction(r: Renderer, t: number, tint: string): void {
+  const b = r.drawBuffer;
+  const W = r.bufW;
+  const H = r.bufH;
+  b.fillStyle = "#0a0f1e";
+  b.fillRect(0, 0, W, H);
+
+  const skins = ["#f3d1b0", "#e6b48c", "#c8865a", "#8d5a3b", "#5b3a29"];
+  const shirts = [tint, "#f8fafc", "#cbd5e1", "#94a3b8", "#1f2937", tint];
+
+  // Banked stand, low angle looking up into the crowd.
+  const rows = 8;
+  for (let row = 0; row < rows; row++) {
+    const bandH = Math.round(H * 0.082);
+    const y = Math.round(H * 0.3) + row * bandH;
+    const depth = row / rows;
+    b.fillStyle = `rgba(${Math.round(24 + depth * 40)},${Math.round(30 + depth * 44)},${Math.round(48 + depth * 56)},1)`;
+    b.fillRect(0, y, W, bandH);
+    b.fillStyle = "rgba(0,0,0,0.35)";
+    b.fillRect(Math.round(W * 0.5), y, 10, bandH);
+
+    // Proper supporters: head, torso, some with arms in the air.
+    const stepX = 11;
+    for (let i = 0; i * stepX < W; i++) {
+      const seed = (i * 31 + row * 17) % 100;
+      const x = i * stepX + ((i * 13) % 3);
+      const jump = Math.sin(t * 7 + seed) > 0.25 ? -2 : 0;
+      const skin = skins[seed % skins.length];
+      const shirt = shirts[seed % shirts.length];
+      const armsUp = seed % 3 === 0;
+      // head
+      b.fillStyle = skin;
+      b.fillRect(x + 3, y + 3 + jump, 3, 3);
+      // torso
+      b.fillStyle = shirt;
+      b.fillRect(x + 1, y + 6 + jump, 7, 5);
+      // arms
+      if (armsUp) {
+        b.fillStyle = skin;
+        b.fillRect(x, y + 1 + jump, 1, 4);
+        b.fillRect(x + 8, y + 1 + jump, 1, 4);
+      }
+    }
+  }
+  // roof shadow + bottom falloff, no caption text (clean broadcast shot)
+  b.fillStyle = "rgba(4,8,18,0.55)";
+  b.fillRect(0, 0, W, Math.round(H * 0.3));
+  b.fillStyle = "rgba(4,8,18,0.9)";
+  b.fillRect(0, H - 10, W, 10);
+}

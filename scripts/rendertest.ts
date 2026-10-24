@@ -65,6 +65,33 @@ for (let i = 0; i < 60 * 200 && !d2.done; i++) {
   if (f.stepEngine && r2.lastSnapshot) d2.record(r2.lastSnapshot, dt);
 }
 console.log("user match done", d2.done, e2.score);
+
+// Card cutscene flow: force a card in open play and record every scene the director visits.
+{
+  const e3 = new RugbyEngine({ home: getTeam("nzl"), away: getTeam("rsa"), userTeam: 0, halfSeconds: 60, difficulty: "normal" });
+  const r3 = new Renderer(canvas, getStadium("edenpark"), e3, DEFAULT_BINDINGS);
+  const d3 = new Director(e3, getStadium("edenpark"), { attract: false, competition: "Rugby World Cup", bindings: DEFAULT_BINDINGS, skipIntro: true });
+  const seen: string[] = [];
+  let carded = false;
+  for (let i = 0; i < 60 * 90 && !d3.done; i++) {
+    const f = d3.update(dt, false, false);
+    if (seen[seen.length - 1] !== d3.scene) seen.push(d3.scene);
+    if (f.stepEngine) {
+      e3.update(dt, { ...IDLE_INPUT, action: i % 40 === 0, moveX: 1 });
+      if (!carded && i > 600 && e3.phase === "play") { carded = true; e3.showCard(e3.pl(1, 7), "yellow", "a high tackle"); }
+      d3.afterStep();
+    }
+    r3.render(e3, dt, f);
+    if (f.stepEngine && r3.lastSnapshot) d3.record(r3.lastSnapshot, dt);
+    if (carded && seen.includes("card") && d3.scene === "live" && seen.length > 4) break;
+  }
+  const flow = seen.join(" > ");
+  console.log("card flow:", flow);
+  const want = ["stingerIn", "replay", "stingerOut", "card", "live"];
+  let at = flow.indexOf("stingerIn");
+  for (const w of want) { const j = flow.indexOf(w, at); if (j < 0) throw new Error("card cutscene missing step: " + w); at = j; }
+  console.log("CARD_CUTSCENE_OK");
+}
 const thumb: any = document.createElement("canvas"); thumb.width = 320; thumb.height = 180;
 renderStadiumThumb(thumb, getStadium("suncorp"));
 console.log("RENDER OK");

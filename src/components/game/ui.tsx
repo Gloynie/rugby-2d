@@ -7,7 +7,7 @@ import type { Stadium, TeamData } from "@/game/types";
 
 export function Kicker({ children, color, className = "" }: { children: ReactNode; color?: string; className?: string }) {
   return (
-    <p className={`font-pixel text-[10px] uppercase tracking-[0.22em] ${className}`} style={{ color: color ?? "#facc15" }}>
+    <p className={`font-pixel text-[10px] uppercase tracking-[0.22em] ${className}`} style={{ color: color ?? "#1273c8" }}>
       {children}
     </p>
   );
@@ -15,7 +15,7 @@ export function Kicker({ children, color, className = "" }: { children: ReactNod
 
 export function Title({ children, className = "" }: { children: ReactNode; className?: string }) {
   return (
-    <h1 className={`font-pixel mt-1 text-xl uppercase leading-relaxed drop-shadow-[3px_3px_0_#000] md:text-2xl ${className}`}>{children}</h1>
+    <h1 className={`menu-heading font-pixel mt-1 text-xl uppercase leading-relaxed md:text-2xl ${className}`}>{children}</h1>
   );
 }
 
@@ -47,7 +47,7 @@ export function Panel({ children, className = "", accent }: { children: ReactNod
 
 export function Kbd({ children }: { children: ReactNode }) {
   return (
-    <span className="font-pixel mx-0.5 inline-block border-2 border-black bg-white px-1.5 py-1 align-middle text-[9px] text-black shadow-[2px_2px_0_#000]">
+    <span className="font-pixel mx-0.5 inline-block border-2 border-[#141a21] bg-white px-1.5 py-1 align-middle text-[9px] text-[#141a21] shadow-[2px_2px_0_rgba(20,30,42,0.35)]">
       {children}
     </span>
   );
@@ -143,7 +143,7 @@ export function ScreenHeader({ kicker, title, right }: { kicker: string; title: 
   return (
     <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
       <div className="flex items-stretch gap-3">
-        <span className="w-1.5 shrink-0 bg-green-400 shadow-[0_0_12px_rgba(74,222,128,0.55)]" aria-hidden />
+        <span className="w-1.5 shrink-0 bg-[#1273c8]" aria-hidden />
         <div>
           <Kicker>{kicker}</Kicker>
           <Title>{title}</Title>
@@ -159,11 +159,32 @@ export function ScreenHeader({ kicker, title, right }: { kicker: string; title: 
 export function Section({ title, children, className = "", right }: { title: string; children: ReactNode; className?: string; right?: ReactNode }) {
   return (
     <section className={`px-panel p-4 ${className}`}>
-      <div className="mb-3 flex items-center justify-between gap-3 border-b border-white/10 pb-2">
+      <div className="mb-3 flex items-center justify-between gap-3 border-b border-[#141a21]/12 pb-2">
         <Kicker>{title}</Kicker>
         {right}
       </div>
       {children}
     </section>
+  );
+}
+
+/** Five-star rating display (half stars supported) used in team pickers. */
+export function Stars({ value, size = 11 }: { value: number; size?: number }) {
+  const star = (fill: number, i: number) => (
+    <span key={i} className="relative inline-block" style={{ width: size, height: size }}>
+      <svg width={size} height={size} viewBox="0 0 24 24" className="absolute inset-0">
+        <path d="M12 2.5l2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.4 6.1 20.5l1.2-6.5L2.5 9.4l6.6-.9z" fill="rgba(255,255,255,0.18)" />
+      </svg>
+      <span className="absolute inset-0 overflow-hidden" style={{ width: `${Math.max(0, Math.min(1, fill)) * 100}%` }}>
+        <svg width={size} height={size} viewBox="0 0 24 24">
+          <path d="M12 2.5l2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.4 6.1 20.5l1.2-6.5L2.5 9.4l6.6-.9z" fill="#facc15" stroke="#000" strokeWidth="1" />
+        </svg>
+      </span>
+    </span>
+  );
+  return (
+    <span className="inline-flex items-center gap-0.5" title={`${value} / 5 stars`}>
+      {[0, 1, 2, 3, 4].map((i) => star(value - i, i))}
+    </span>
   );
 }

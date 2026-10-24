@@ -127,24 +127,13 @@ export default function GameShell({ initialUser, initialScreen }: { initialUser:
   const fav = findTeam(user?.favouriteTeam);
 
   return (
-    <div className="fixed inset-0 select-none overflow-hidden bg-black text-white">
-      {!inMatch && booted && screen.name !== "menu" && (
-        <div className="backdrop-static pointer-events-none absolute inset-0" aria-hidden />
-      )}
-      {!inMatch && (
-        <>
-          <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-black/70 via-black/20 to-black/55" />
-          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-black/45" />
-          <div className="scanlines pointer-events-none absolute inset-0 opacity-50" />
-          <div className="vignette pointer-events-none absolute inset-0" />
-        </>
-      )}
+    <div className={`fixed inset-0 select-none overflow-hidden ${inMatch ? "bg-black text-white" : "menu-theme"}`}>
       <div className="relative z-10 flex h-full flex-col">
-        {!inMatch && screen.name !== "menu" && (
+        {!inMatch && screen.name !== "menu" && screen.name !== "play" && (
           <div className="flex items-center gap-3 px-6 pt-4 md:px-10">
             <button
               onClick={back}
-              className="font-pixel flex items-center gap-2 border-2 border-black bg-black/60 px-3 py-2 text-[8px] uppercase tracking-widest text-slate-200 shadow-[3px_3px_0_#000] transition hover:text-white"
+              className="font-pixel flex items-center gap-2 border-2 border-[#141a21]/25 bg-white/85 px-3 py-2 text-[8px] uppercase tracking-widest text-[#141a21] shadow-[3px_3px_0_rgba(20,30,42,0.25)] transition hover:bg-white"
               aria-label="Back to main menu"
             >
               <span aria-hidden>◀</span> Back
@@ -185,7 +174,7 @@ export default function GameShell({ initialUser, initialScreen }: { initialUser:
         </div>
 
         {!inMatch && screen.name !== "menu" && (
-          <footer className="flex items-center gap-4 px-6 py-3 text-slate-300 md:px-10">
+          <footer className="flex items-center gap-4 px-6 py-3 text-[#3d4854] md:px-10">
             <span>
               <Kbd>↑</Kbd><Kbd>↓</Kbd><Kbd>←</Kbd><Kbd>→</Kbd> navigate
             </span>

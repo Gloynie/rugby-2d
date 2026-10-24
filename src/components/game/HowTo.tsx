@@ -12,6 +12,8 @@ const LAWS: [string, string][] = [
   ["Kicking & touch", "Kicked directly into touch from outside your 22 = lineout back where you kicked it. From inside your 22 you gain the ground."],
   ["Set pieces", "Scrums use a three-shove timing contest. At lineouts choose 4–7 players, front/middle/back, then clean ball, short ball or a driving maul. Jumping, handling, strength and whether the defence reads the call decide the winner."],
   ["Restarts", "The conceding team restarts with a kick-off from halfway. Balls made dead in-goal lead to a goal-line drop-out."],
+  ["Cards", "High tackles can earn a yellow (10 minutes in the sin bin) or a red (sent off). Repeated team penalties or cynical offences near your own line also bring a yellow. Two yellows make a red. Your team plays a man short until the player returns."],
+  ["Goal kicking", "Stop the power bar anywhere past the white marker, then stop the aim marker inside the green zone. The green zone is sized to the real gap between the posts, so it shrinks the further out you kick."],
   ["Penalties", "High tackles, collapsed scrums and ruck infringements give penalties: kick at goal, kick to the corner, or tap and run."],
   ["Player pace & power", "Pace is permanent and position-based: wings and fullbacks are the quickest runners, centres and halfbacks are agile, while props and locks are slower but far stronger in contact."],
   ["Time", "The clock is scaled to a full 80 minutes. When time is up, play continues until the next stoppage."],

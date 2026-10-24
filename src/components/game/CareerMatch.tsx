@@ -12,8 +12,8 @@ import MatchView from "./MatchView";
 import type { RugbyEngine } from "@/game/engine";
 
 const emptyReportStats = (): MatchResult["stats"] => [
-  { tries: 0, penalties: 0, dropGoals: 0, conversions: 0, scrumsWon: 0, lineoutsWon: 0, tackles: 0, lineBreaks: 0, metresMade: 0, possessionSeconds: 0, territorySeconds: 0, passes: 0 },
-  { tries: 0, penalties: 0, dropGoals: 0, conversions: 0, scrumsWon: 0, lineoutsWon: 0, tackles: 0, lineBreaks: 0, metresMade: 0, possessionSeconds: 0, territorySeconds: 0, passes: 0 },
+  { tries: 0, penalties: 0, dropGoals: 0, conversions: 0, scrumsWon: 0, lineoutsWon: 0, tackles: 0, lineBreaks: 0, metresMade: 0, possessionSeconds: 0, territorySeconds: 0, passes: 0, yellowCards: 0, redCards: 0 },
+  { tries: 0, penalties: 0, dropGoals: 0, conversions: 0, scrumsWon: 0, lineoutsWon: 0, tackles: 0, lineBreaks: 0, metresMade: 0, possessionSeconds: 0, territorySeconds: 0, passes: 0, yellowCards: 0, redCards: 0 },
 ];
 
 interface Props {

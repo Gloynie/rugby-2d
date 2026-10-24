@@ -87,3 +87,22 @@ export const SUPER_RUGBY_TEAMS: TeamData[] = [
   club("drua", "Fijian Drua", "DRU", "Fiji", "#f8fafc", "#0891b2", 74,
     ["Haereiti Hetet", "Tevita Ikanivere", "Mesake Doge", "Isoa Nasilasila", "Mesake Vocevoce", "Meli Derenalagi", "Elia Canakaivata", "Joseva Tamani", "Frank Lomani", "Caleb Muntz", "Selestino Ravutaumada", "Iosefo Masi", "Apisalome Vota", "Ponipate Loganimasi", "Ilaisa Droasese"]),
 ];
+
+export const TOP14_TEAMS: TeamData[] = [
+  club("toulouse", "Stade Toulousain", "TOU", "France", "#dc2626", "#111111", 89,
+    ["Cyril Baille", "Julien Marchand", "Dorian Aldegheri", "Thibaud Flament", "Emmanuel Meafou", "François Cros", "Jack Willis", "Alexandre Roumat", "Antoine Dupont", "Romain Ntamack", "Matthis Lebel", "Pita Ahki", "Pierre-Louis Barassi", "Ange Capuozzo", "Thomas Ramos"], "stadedefrance"),
+  club("bordeaux", "Bordeaux-Bègles", "BOR", "France", "#7c2d4e", "#f8fafc", 86,
+    ["Jefferson Poirot", "Maxime Lamothe", "Ben Tameifuna", "Cyril Cazeaux", "Jonny Gray", "Mahamadou Diaby", "Pete Samu", "Tevita Tatafu", "Maxime Lucu", "Matthieu Jalibert", "Louis Bielle-Biarrey", "Yoram Moefana", "Nicolas Depoortère", "Damian Penaud", "Romain Buros"]),
+  club("larochelle", "La Rochelle", "LAR", "France", "#facc15", "#111111", 85,
+    ["Reda Wardi", "Tolu Latu", "Uini Atonio", "Thomas Lavault", "Will Skelton", "Paul Boudehent", "Oscar Jegou", "Grégory Alldritt", "Tawera Kerr-Barlow", "Antoine Hastoy", "Dillyn Leyds", "Ulupano Seuteni", "Jules Favre", "Teddy Thomas", "Brice Dulin"]),
+  club("toulon", "RC Toulon", "TLN", "France", "#b91c1c", "#111111", 82,
+    ["Dany Priso", "Teddy Baubigny", "Beka Gigashvili", "David Ribbans", "Brian Alainu'uese", "Esteban Abadie", "Charles Ollivon", "Facundo Isa", "Baptiste Serin", "Dan Biggar", "Gabin Villière", "Duncan Paia'aua", "Waisea Nayacalevu", "Jiuta Wainiqolo", "Marius Domon"], "velodrome"),
+  club("racing", "Racing 92", "R92", "France", "#38bdf8", "#f8fafc", 81,
+    ["Guram Gogichashvili", "Camille Chat", "Thomas Laclayat", "Boris Palu", "Baptiste Pesenti", "Wenceslas Lauret", "Ibrahim Diallo", "Cameron Woki", "Nolann Le Garrec", "Tristan Tedder", "Henry Arundell", "Josua Tuisova", "Gaël Fickou", "Donovan Taofifenua", "Max Spring"], "stadedefrance"),
+  club("stadefrancais", "Stade Français", "SFP", "France", "#ec4899", "#111111", 79,
+    ["Clément Castets", "Lucas Peyresblanques", "Paul Alo-Emile", "Pierre-Henri Azagoh", "JJ van der Mescht", "Mathieu Hirigoyen", "Sekou Macalou", "Giovanni Habel-Küffner", "Brad Weber", "Zack Henry", "Samuel Ezeala", "Jeremy Ward", "Joe Marchant", "Peniasi Dakuwaqa", "Léo Barré"], "stadedefrance"),
+  club("clermont", "Clermont Auvergne", "CLE", "France", "#facc15", "#1d4ed8", 78,
+    ["Etienne Falgoux", "Folau Fainga'a", "Cristian Ojovan", "Tomas Lavanini", "Thibaud Lanen", "Judicaël Cancoriet", "Marcos Kremer", "Fritz Lee", "Sébastien Bézy", "Anthony Belleau", "Alivereti Raka", "George Moala", "Irae Simone", "Joris Jurand", "Cheikh Tiberghien"]),
+  club("montpellier", "Montpellier", "MON", "France", "#1e3a8a", "#38bdf8", 76,
+    ["Baptiste Erdocio", "Brandon Paenga-Amosa", "Wilfrid Hounkpatin", "Paul Willemse", "Tyler Duguid", "Yacouba Camara", "Alexandre Bécognée", "Zach Mercer", "Cobus Reinach", "Domingo Miotti", "Vincent Rattez", "Jan Serfontein", "Arthur Vincent", "Gabriel N'Gandebe", "Anthony Bouthier"]),
+];

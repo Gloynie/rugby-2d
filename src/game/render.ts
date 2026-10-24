@@ -96,16 +96,18 @@ function makeCrowdTile(s: Stadium, frame: number): HTMLCanvasElement {
     return seed / 0x7fffffff;
   };
   const cols = s.crowdColours && s.crowdColours.length ? [...s.crowdColours] : [s.accent, "#e5e7eb", "#111827", "#6b7280", s.accent, "#f3f4f6", "#374151", "#b91c1c", "#1d4ed8", "#facc15"];
+  const skins = ["#f3d1b0", "#e6b48c", "#c8865a", "#8d5a3b", "#5b3a29"];
   for (let y = 0; y < 32; y += 4) {
     for (let x = 0; x < 32; x += 3) {
-      const skip = rnd() < 0.12;
+      if (rnd() < 0.12) continue;
       const col = cols[Math.floor(rnd() * cols.length)];
-      const r = rnd();
-      const jx = rnd() < 0.5 ? 0 : 1;
-      if (skip) continue;
-      const bob = frame === 1 && r < 0.5 ? -1 : 0;
+      const skin = skins[Math.floor(rnd() * skins.length)];
+      const bob = frame === 1 && rnd() < 0.5 ? -1 : 0;
+      // One supporter: head, shoulders/torso, seat shadow.
+      c.fillStyle = skin;
+      c.fillRect(x + 1, y + bob, 1, 1);
       c.fillStyle = col;
-      c.fillRect(x + jx, y + 1 + bob, 2, 2);
+      c.fillRect(x, y + 1 + bob, 3, 2);
       c.fillStyle = "rgba(0,0,0,0.35)";
       c.fillRect(x, y + 3, 3, 1);
     }
@@ -150,6 +152,22 @@ function makeBall(t: string[]): HTMLCanvasElement {
     }
   ctx.putImageData(img, 0, 0);
   return c;
+}
+
+/** Three representative colours for a nation, used for the flag stripe on the scoreboard. */
+export function flagBands(country: string): string[] {
+  const map: Record<string, string[]> = {
+    england: ["#ffffff", "#CE1124", "#ffffff"], france: ["#002395", "#ffffff", "#ED2939"],
+    ireland: ["#169B62", "#ffffff", "#FF883E"], italy: ["#008C45", "#F4F5F0", "#CD212A"],
+    scotland: ["#0065BF", "#ffffff", "#0065BF"], wales: ["#ffffff", "#C8102E", "#00AD43"],
+    "new zealand": ["#00247D", "#ffffff", "#CC142B"], "south africa": ["#007A4D", "#ffffff", "#DE3831"],
+    australia: ["#00247D", "#ffffff", "#C8102E"], argentina: ["#74ACDF", "#ffffff", "#74ACDF"],
+    japan: ["#ffffff", "#BC002D", "#ffffff"], fiji: ["#68BFE0", "#ffffff", "#00247D"],
+    georgia: ["#ffffff", "#FF0000", "#ffffff"], samoa: ["#CE1126", "#ffffff", "#002B7F"],
+    tonga: ["#C10000", "#ffffff", "#C10000"], portugal: ["#046A38", "#FFE900", "#DA291C"],
+    "pacific islands": ["#0E4C92", "#ffffff", "#0E4C92"],
+  };
+  return map[country.trim().toLowerCase()] ?? ["#334155", "#64748b", "#334155"];
 }
 
 export class Renderer {
@@ -1881,7 +1899,6 @@ export class Renderer {
     this.drawMessage(m);
     this.drawPlayerCard(m);
     this.drawMiniMap(m);
-    if (this.showHelp && m.userTeam !== null) this.drawHelp();
     this.drawPhaseUI(m);
 
 
@@ -1895,16 +1912,46 @@ export class Renderer {
   private drawScoreboard(m: RugbyEngine): void {
     const x = 6;
     const y = 6;
-    this.panel(x, y, 196, 18);
-    this.rect(x + 4, y + 3, 4, 12, m.teams[0].color);
-    this.rect(x + 188, y + 3, 4, 12, m.teams[1].color);
-    this.text(m.teams[0].data.short, x + 12, y + 5);
-    this.text(`${m.score[0]}-${m.score[1]}`, x + 98, y + 5, { align: "center", color: "#fde68a" });
-    this.text(m.teams[1].data.short, x + 184, y + 5, { align: "right" });
-    this.rect(m.possession === 0 ? x + 44 : x + 148, y + 8, 3, 3, "#facc15");
+    // Slightly wider to fit a flag stripe beside each team code.
+    this.panel(x, y, 212, 20);
+    this.rect(x, y, 212, 2, "rgba(250,204,21,0.55)");
+    // Flag strips: three bands in the nation's colours, so each side reads instantly.
+    for (const t of [0, 1] as TeamIndex[]) {
+      const base = t === 0 ? x + 5 : x + 207;
+      const cols = flagBands(m.teams[t].data.country);
+      const w = 5;
+      cols.forEach((c, i) => this.rect(t === 0 ? base + i * w : base - (i + 1) * w, y + 5, w, 10, c));
+    }
+    this.text(m.teams[0].data.short, x + 24, y + 6);
+    this.text(`${m.score[0]}-${m.score[1]}`, x + 106, y + 6, { align: "center", color: "#fde68a" });
+    this.text(m.teams[1].data.short, x + 188, y + 6, { align: "right" });
+    // Possession pip sits under the team in the lead's half of the board.
+    this.rect(m.possession === 0 ? x + 52 : x + 160, y + 12, 3, 3, "#facc15");
     this.panel(x + 200, y, 82, 18);
     this.text(m.gameClock(), x + 206, y + 5, { color: m.timeUp ? "#f87171" : "#ffffff" });
     this.text(m.half === 1 ? "1H" : "2H", x + 262, y + 5, { color: "#94a3b8" });
+
+    // Red cards: a small red tag beside the team code for each player sent off.
+    for (const t of [0, 1] as TeamIndex[]) {
+      const reds = m.cards.filter((c) => c.team === t && c.type === "red").length;
+      for (let i = 0; i < reds; i++) {
+        const rx = t === 0 ? x + 34 + i * 6 : x + 158 - i * 6;
+        this.rect(rx, y + 4, 4, 6, "#ef4444");
+      }
+    }
+
+    // Sin bin: one row per binned player with a live countdown in match minutes.
+    const binned = m.sinBinned();
+    binned.slice(0, 4).forEach(({ card, remaining }, i) => {
+      const ry = y + 22 + i * 14;
+      const gameSecs = Math.ceil((remaining / Math.max(1, m.halfSeconds)) * 40 * 60);
+      const mm = Math.floor(gameSecs / 60);
+      const ss = String(gameSecs % 60).padStart(2, "0");
+      this.panel(x, ry, 150, 12);
+      this.rect(x + 4, ry + 2, 5, 8, "#facc15");
+      this.text(`${m.teams[card.team].data.short} ${card.name.split(" ").slice(-1)[0].toUpperCase().slice(0, 10)}`, x + 13, ry + 3, { size: 6, color: "#e5e7eb" });
+      this.text(`${mm}:${ss}`, x + 145, ry + 3, { align: "right", size: 6, color: "#facc15" });
+    });
   }
 
   private drawMessage(m: RugbyEngine): void {
@@ -1986,8 +2033,11 @@ export class Renderer {
     const p = m.players[m.controlled];
     const x = 6;
     const y = this.bufH - 28;
-    this.panel(x, y, 176, 22, { accent: m.teams[p.team].color });
-    this.text(`${p.number} ${p.name.toUpperCase().slice(0, 15)}`, x + 8, y + 4, { color: "#fff" });
+    // Panel grows to fit the whole name – never truncate a player's name.
+    const label = `${p.number}  ${p.name.toUpperCase()}`;
+    const w = Math.min(this.bufW - 220, Math.max(196, Math.ceil(this.measure(label, 8)) + 30));
+    this.panel(x, y, w, 22, { accent: m.teams[p.team].color });
+    this.text(label, x + 8, y + 4, { color: "#fff" });
     const role = p.isForward ? "FORWARD" : p.number === 9 || p.number === 10 ? "HALF-BACK" : "BACK";
     this.text(`${role}  PACE ${p.attrs.speed.toFixed(1)}  POWER ${Math.round(p.attrs.strength)}`, x + 8, y + 14, { color: "#94a3b8" });
     if (m.charging) {
@@ -2028,25 +2078,6 @@ export class Renderer {
     this.rect(cx + cw, cy, 1, ch, "rgba(255,255,255,0.5)");
     const home = m.teams[0];
     this.text(home.dir === 1 ? `${home.data.short} >` : `< ${home.data.short}`, x + w / 2, y - 13, { align: "center", color: "#cbd5e1" });
-  }
-
-  private drawHelp(): void {
-    const k = (c: string) => keyLabel(c, true);
-    const bnd = this.bindings;
-    const lines = [
-      `${k(bnd.up)}${k(bnd.down)}${k(bnd.left)}${k(bnd.right)} MOVE ${k(bnd.sprint)} SPRINT`,
-      `${k(bnd.passUp)}/${k(bnd.passDown)} PASS ${k(bnd.kick)} KICK ${k(bnd.dropGoal)} DROP`,
-      `${k(bnd.action)} TACKLE/DIVE ${k(bnd.switch)} SWITCH`,
-      `${k(bnd.handOff)} HANDOFF ${k(bnd.bounce)} BOUNCE`,
-      `${k(bnd.stepLeft)}/${k(bnd.stepRight)} STEP L/R  (R-STICK ON PAD)`,
-    ];
-    if (bnd.up === "ArrowUp" && bnd.down === "ArrowDown") lines[0] = `ARROWS MOVE  ${k(bnd.sprint)} SPRINT`;
-    const w = Math.max(...lines.map((l) => this.measure(l))) + 12;
-    const h = 8 + lines.length * 11;
-    const x = this.bufW - w - 6;
-    const y = this.bufH - h - 6;
-    this.panel(x, y, Math.round(w), h);
-    lines.forEach((l, i) => this.text(l, x + 6, y + 5 + i * 11, { color: "#cbd5e1" }));
   }
 
   private banner(text: string, sub: string): void {
@@ -2167,11 +2198,19 @@ export class Renderer {
       this.text(`${gk.kind === "conversion" ? "CONVERSION" : "PENALTY KICK"} - ${Math.round(gk.distance)}M`, x + w / 2, y + 5, { align: "center", color: "#facc15" });
       this.text("POWER", x + 10, y + 20, { color: "#94a3b8" });
       const power = meter.stage === "power" ? meter.value : meter.power;
-      this.bar(x + 70, y + 20, 200, 6, power, power >= gk.requiredPower ? "#22c55e" : "#f59e0b");
-      this.rect(x + 70 + Math.round(200 * gk.requiredPower), y + 18, 2, 10, "#fff");
+      // Faint green band shows every power level that clears the bar (anything past the marker).
+      const reqX = Math.round(200 * gk.requiredPower);
+      this.rect(x + 70, y + 20, 200, 6, "#1e293b");
+      this.rect(x + 70 + reqX, y + 20, 200 - reqX, 6, "rgba(34,197,94,0.22)");
+      this.bar(x + 70, y + 20, 200, 6, power, power >= gk.requiredPower - 0.1 ? "#22c55e" : "#f59e0b", "rgba(0,0,0,0)");
+      this.rect(x + 70 + reqX, y + 18, 2, 10, "#fff");
       this.text("AIM", x + 10, y + 34, { color: "#94a3b8" });
       this.bar(x + 70, y + 34, 200, 6, 0, "#334155");
-      this.rect(x + 70 + 92, y + 34, 16, 6, "#22c55e");
+      // Aim zone sized from the real gap between the posts at this distance.
+      const win = m.goalAimWindow();
+      const zw = Math.max(8, Math.round(200 * win * 2));
+      this.rect(x + 70 + 100 - zw / 2, y + 34, zw, 6, "#22c55e");
+      this.rect(x + 70 + 99, y + 33, 2, 8, "#bbf7d0");
       if (meter.stage !== "power") {
         const a = meter.stage === "accuracy" ? meter.value : meter.accuracy;
         this.rect(x + 70 + Math.round(200 * a) - 1, y + 32, 2, 10, "#fff");

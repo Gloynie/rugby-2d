@@ -2,6 +2,7 @@
 
 import { findTeam } from "@/game/data";
 import type { UltimateCard } from "@/lib/ultimate";
+import { Flag, flagFor } from "./Flags";
 import { Crest, PlayerSprite } from "./ui";
 
 /** Tiered looks: each rarity gets its own panel tint, trim and label. */
@@ -51,7 +52,7 @@ export default function PlayerCard({ card, size = "md", selected, onClick, foote
         type="button"
         onClick={onClick}
         disabled={!onClick}
-        className={`group relative w-full overflow-hidden border-2 text-left transition-transform duration-100 ${onClick ? "hover:-translate-y-0.5" : ""} ${selected ? "outline outline-2 outline-offset-2 outline-yellow-300" : ""}`}
+        className={`on-dark group relative w-full overflow-hidden border-2 text-left transition-transform duration-100 ${onClick ? "hover:-translate-y-0.5" : ""} ${selected ? "outline outline-2 outline-offset-2 outline-yellow-300" : ""}`}
         style={{ borderColor: tier.trim, background: tier.panel, boxShadow: `3px 3px 0 #000, 0 0 14px ${tier.glow}` }}
         title={`${card.name} · ${card.positionName} · ${card.clubName ?? card.teamName}`}
       >
@@ -92,7 +93,7 @@ export default function PlayerCard({ card, size = "md", selected, onClick, foote
         <div className="mt-2 flex items-center gap-1.5 border-t border-black/60 bg-black/30 px-2 py-1.5">
           {team ? <Crest team={team} size={14} /> : <span className="h-3.5 w-3.5 bg-slate-600" />}
           <span className="min-w-0 flex-1 truncate font-pixel text-[6px] uppercase text-slate-200">{card.clubName ?? card.teamName}</span>
-          <span className="shrink-0 font-pixel text-[6px] uppercase text-slate-400">{card.country.slice(0, 3)}</span>
+          <Flag id={flagFor(card.country)} size={14} title={card.country} />
         </div>
       </button>
       {footer}

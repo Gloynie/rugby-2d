@@ -452,3 +452,246 @@ html[data-smooth="1"] .game-canvas {
 .scroll::-webkit-scrollbar { width: 10px; }
 .scroll::-webkit-scrollbar-thumb { background: #facc15; border: 2px solid #0b1020; }
 .scroll::-webkit-scrollbar-track { background: #0b1020; }
+
+/* substitution cutscene */
+.sub-cut { animation: subCut 0.4s steps(4, end) both; }
+@keyframes subCut {
+  0%   { transform: translateY(-24px) scale(0.96); opacity: 0; }
+  60%  { transform: translateY(4px) scale(1.01); opacity: 1; }
+  100% { transform: none; opacity: 1; }
+}
+
+/* ==========================================================================
+   LIGHT GAME THEME  —  all menus match the main menu look.
+   Every screen is wrapped in .menu-theme, so the Tailwind utilities used
+   throughout the app are remapped here rather than edited screen by screen.
+   ========================================================================== */
+.menu-theme {
+  color-scheme: light;
+  color: #141a21;
+  background-color: #cfd4d9;
+}
+.menu-theme::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: url("/img/menu-bg.jpg");
+  background-size: cover;
+  background-position: center;
+  z-index: -2;
+}
+.menu-theme::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.55) 0%, rgba(233, 237, 240, 0.82) 45%, rgba(226, 231, 235, 0.94) 100%);
+  z-index: -1;
+  pointer-events: none;
+}
+
+/* text palette: light greys become readable darks */
+.menu-theme .text-white { color: #10161d; }
+.menu-theme .text-slate-100 { color: #141a21; }
+.menu-theme .text-slate-200 { color: #1f2a35; }
+.menu-theme .text-slate-300 { color: #35414d; }
+.menu-theme .text-slate-400 { color: #4a5663; }
+.menu-theme .text-slate-500 { color: #5d6a77; }
+.menu-theme .text-slate-600 { color: #6c7885; }
+.menu-theme .text-slate-700 { color: #2c3641; }
+/* accents, darkened for contrast on white */
+.menu-theme .text-yellow-300 { color: #a16207; }
+.menu-theme .text-yellow-400 { color: #b45309; }
+.menu-theme .text-green-300 { color: #15803d; }
+.menu-theme .text-green-400 { color: #15803d; }
+.menu-theme .text-red-300 { color: #b91c1c; }
+.menu-theme .text-red-400 { color: #b91c1c; }
+.menu-theme .text-red-200 { color: #991b1b; }
+.menu-theme .text-blue-300 { color: #1d6fb8; }
+.menu-theme .text-emerald-300 { color: #157347; }
+.menu-theme .text-cyan-300 { color: #0e7490; }
+.menu-theme .text-pink-300 { color: #be185d; }
+.menu-theme .text-amber-800 { color: #92400e; }
+
+/* surfaces: black glass becomes white cards */
+.menu-theme .bg-black\/30,
+.menu-theme .bg-black\/35,
+.menu-theme .bg-black\/40,
+.menu-theme .bg-black\/45,
+.menu-theme .bg-black\/50 { background-color: rgba(255, 255, 255, 0.72); }
+.menu-theme .bg-black\/55,
+.menu-theme .bg-black\/60,
+.menu-theme .bg-black\/65,
+.menu-theme .bg-black\/70 { background-color: rgba(255, 255, 255, 0.82); }
+.menu-theme .bg-black\/75,
+.menu-theme .bg-black\/80,
+.menu-theme .bg-black\/90,
+.menu-theme .bg-black\/92,
+.menu-theme .bg-black\/95 { background-color: rgba(255, 255, 255, 0.92); }
+.menu-theme .bg-white\/5 { background-color: rgba(20, 30, 42, 0.04); }
+.menu-theme .bg-white\/10 { background-color: rgba(20, 30, 42, 0.08); }
+.menu-theme .bg-white\/15 { background-color: rgba(20, 30, 42, 0.12); }
+.menu-theme .bg-slate-900\/60 { background-color: rgba(255, 255, 255, 0.8); }
+.menu-theme .bg-slate-900 { background-color: rgba(20, 30, 42, 0.08); }
+.menu-theme .bg-slate-600 { background-color: rgba(20, 30, 42, 0.22); }
+.menu-theme .bg-slate-800\/90 { background-color: rgba(255, 255, 255, 0.9); }
+.menu-theme .bg-yellow-400\/10 { background-color: rgba(18, 115, 200, 0.1); }
+.menu-theme .bg-green-400\/10 { background-color: rgba(21, 128, 61, 0.12); }
+.menu-theme .bg-green-400\/20 { background-color: rgba(21, 128, 61, 0.18); }
+.menu-theme .bg-green-950\/40,
+.menu-theme .bg-green-950\/50 { background-color: rgba(21, 128, 61, 0.12); }
+.menu-theme .bg-yellow-950\/40,
+.menu-theme .bg-yellow-950\/50,
+.menu-theme .bg-yellow-950\/60,
+.menu-theme .bg-yellow-950\/70 { background-color: rgba(180, 83, 9, 0.12); }
+.menu-theme .bg-red-950\/40,
+.menu-theme .bg-red-950\/50,
+.menu-theme .bg-red-950\/60 { background-color: rgba(185, 28, 28, 0.1); }
+.menu-theme .bg-amber-100\/80 { background-color: rgba(217, 119, 6, 0.16); }
+
+/* borders */
+.menu-theme .border-white\/5,
+.menu-theme .border-white\/10,
+.menu-theme .border-white\/15 { border-color: rgba(20, 30, 42, 0.14); }
+.menu-theme .border-white\/20,
+.menu-theme .border-white\/25,
+.menu-theme .border-white\/30,
+.menu-theme .border-white\/40 { border-color: rgba(20, 30, 42, 0.22); }
+.menu-theme .border-slate-700 { border-color: rgba(20, 30, 42, 0.18); }
+.menu-theme .border-yellow-400\/40,
+.menu-theme .border-yellow-400\/50,
+.menu-theme .border-yellow-400\/60,
+.menu-theme .border-yellow-400\/70 { border-color: rgba(18, 115, 200, 0.55); }
+.menu-theme .border-green-400\/40,
+.menu-theme .border-green-400\/50,
+.menu-theme .border-green-400\/60 { border-color: rgba(21, 128, 61, 0.5); }
+.menu-theme .border-red-500\/40,
+.menu-theme .border-red-500\/60 { border-color: rgba(185, 28, 28, 0.45); }
+.menu-theme .divide-white\/5 > :not([hidden]) ~ :not([hidden]),
+.menu-theme .divide-white\/10 > :not([hidden]) ~ :not([hidden]) { border-color: rgba(20, 30, 42, 0.1); }
+
+/* the dark navy "chrome" panels inside cards */
+.menu-theme .bg-\[\#0b1626\],
+.menu-theme .bg-\[\#0b1020\],
+.menu-theme .bg-\[\#10243a\] { background-color: rgba(255, 255, 255, 0.92); }
+.menu-theme .bg-\[\#0b1626\]\/95 { background-color: rgba(255, 255, 255, 0.95); }
+.menu-theme .bg-\[\#0b1020\]\/90,
+.menu-theme .bg-\[\#0b1020\]\/95 { background-color: rgba(255, 255, 255, 0.94); }
+
+/* inputs + scrollbars */
+.menu-theme .px-input {
+  background: #fff;
+  border-color: rgba(20, 30, 42, 0.25);
+  color: #141a21;
+}
+.menu-theme .px-input:focus { border-color: #1273c8; }
+.menu-theme .scroll { scrollbar-color: #1273c8 rgba(0, 0, 0, 0.06); }
+.menu-theme .scroll::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.06); }
+.menu-theme .scroll::-webkit-scrollbar-thumb { background: #1273c8; border-color: #eef1f4; }
+.menu-theme :focus-visible,
+.menu-theme button:focus { outline-color: #1273c8; }
+
+/* ==========================================================================
+   Shared chrome restyled for the light theme
+   ========================================================================== */
+.px-panel {
+  position: relative;
+  background: rgba(255, 255, 255, 0.9);
+  border: 2px solid rgba(20, 30, 42, 0.16);
+  box-shadow: 4px 4px 0 rgba(20, 30, 42, 0.18);
+  color: #141a21;
+  backdrop-filter: blur(3px);
+  border-radius: 2px;
+}
+.px-panel::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 4px;
+  background: linear-gradient(180deg, #1273c8, #1d9e4b);
+  pointer-events: none;
+}
+.px-btn {
+  font-family: "PressStart2P", ui-monospace, monospace;
+  font-size: 10px;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 11px 15px;
+  min-height: 38px;
+  border: 2px solid rgba(20, 30, 42, 0.85);
+  box-shadow: 3px 3px 0 rgba(20, 30, 42, 0.35);
+  background: #171d25;
+  color: #f2f5f8;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: transform 0.06s, filter 0.1s, background 0.1s;
+}
+.px-btn:hover:not(:disabled) { filter: brightness(1.35); }
+.px-btn:active:not(:disabled) { transform: translate(2px, 2px); box-shadow: 1px 1px 0 rgba(20, 30, 42, 0.35); }
+.px-btn.primary { background: #1273c8; color: #fff; border-color: #0c5a9e; }
+.px-btn.danger { background: #a11d1d; color: #fff; border-color: #7f1717; }
+.px-btn.selected { outline: 2px solid #1273c8; outline-offset: 2px; }
+.px-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.tile {
+  position: relative;
+  overflow: hidden;
+  border: 2px solid rgba(20, 30, 42, 0.18);
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: 3px 3px 0 rgba(20, 30, 42, 0.15);
+  cursor: pointer;
+  transition: transform 0.12s, border-color 0.12s, box-shadow 0.12s;
+  text-align: left;
+  border-radius: 2px;
+  color: #141a21;
+}
+.tile.selected,
+.tile:hover {
+  border-color: #1273c8;
+  box-shadow: 0 0 0 2px rgba(18, 115, 200, 0.35), 4px 4px 0 rgba(20, 30, 42, 0.2);
+  transform: translateY(-2px);
+}
+.tile.small-selected { border-color: #1273c8; box-shadow: 0 0 0 2px rgba(18, 115, 200, 0.35); }
+
+/* slanted bars, reused by list screens */
+.slant-row {
+  transform: skewX(-9deg);
+  box-shadow: 3px 3px 0 rgba(20, 30, 42, 0.3);
+  transition: transform 0.1s, background 0.1s, color 0.1s;
+}
+.slant-row > * { transform: skewX(9deg); }
+.slant-row.active {
+  background: #eef1f4;
+  box-shadow: 5px 5px 0 rgba(20, 30, 42, 0.28);
+}
+.menu-heading {
+  color: #10161d;
+  text-shadow: 1px 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+
+/* --------------------------------------------------------------------------
+   .on-dark  — for elements that deliberately stay dark (player cards, pack
+   walkouts). Reverses the light remap so their text stays legible.
+   -------------------------------------------------------------------------- */
+.menu-theme .on-dark { color: #f1f5f9; }
+.menu-theme .on-dark .text-white { color: #f8fafc; }
+.menu-theme .on-dark .text-slate-100 { color: #f1f5f9; }
+.menu-theme .on-dark .text-slate-200 { color: #e2e8f0; }
+.menu-theme .on-dark .text-slate-300 { color: #cbd5e1; }
+.menu-theme .on-dark .text-slate-400 { color: #94a3b8; }
+.menu-theme .on-dark .text-slate-500 { color: #64748b; }
+.menu-theme .on-dark .text-yellow-300 { color: #fde68a; }
+.menu-theme .on-dark .text-yellow-400 { color: #facc15; }
+.menu-theme .on-dark .text-green-300 { color: #86efac; }
+.menu-theme .on-dark .text-green-400 { color: #4ade80; }
+.menu-theme .on-dark .text-red-300 { color: #fca5a5; }
+.menu-theme .on-dark .text-red-400 { color: #f87171; }
+.menu-theme .on-dark .bg-black\/30,
+.menu-theme .on-dark .bg-black\/35,
+.menu-theme .on-dark .bg-black\/40 { background-color: rgba(0, 0, 0, 0.34); }
+.menu-theme .on-dark .bg-black\/50 { background-color: rgba(0, 0, 0, 0.5); }
+.menu-theme .on-dark .bg-white\/10 { background-color: rgba(255, 255, 255, 0.1); }
+.menu-theme .on-dark .border-white\/10,
+.menu-theme .on-dark .border-white\/15 { border-color: rgba(255, 255, 255, 0.14); }
+.menu-theme .on-dark .border-white\/20 { border-color: rgba(255, 255, 255, 0.24); }

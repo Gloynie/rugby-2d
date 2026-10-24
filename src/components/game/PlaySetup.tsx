@@ -2,17 +2,19 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { Bindings } from "@/game/controls";
-import { COMPETITIONS, STADIUMS, TEAMS, getCompetition, getStadium, getTeam, pickKits } from "@/game/data";
+import { CLUB_LEAGUES, COMPETITIONS, INTERNATIONAL_TEAMS, STADIUMS, TEAMS, getCompetition, getStadium, getTeam, pickKits, starsFor } from "@/game/data";
+import { Flag, flagFor } from "./Flags";
+import { GlobePanel } from "./Globe";
 import type { Difficulty, MatchConfig, MatchResult, Stadium, TeamData, TeamIndex } from "@/game/types";
 import type { SessionUser } from "@/lib/auth";
 import { nextUserFixture, type TournamentState } from "@/lib/tournament";
 import type { Screen } from "./GameShell";
 import MatchView from "./MatchView";
 import MatchReport from "./MatchReport";
-import { Btn, Crest, Kbd, Kicker, Panel, PlayerSprite, StadiumThumb, Scroll, ScreenHeader, isLight } from "./ui";
+import { Btn, Crest, Kbd, Kicker, Panel, PlayerSprite, StadiumThumb, Scroll, ScreenHeader, Stars, isLight } from "./ui";
 import Loader from "./Loader";
 
-type Step = "team" | "opponent" | "stadium" | "settings" | "loading" | "match" | "result";
+type Step = "type" | "league" | "team" | "opponent" | "stadium" | "settings" | "loading" | "match" | "result";
 
 const HALF_OPTIONS = [
   { label: "2 min", value: 120 },
@@ -30,7 +32,9 @@ interface Props {
 }
 
 export default function PlaySetup({ user, bindings, tournamentId, go, setInMatch }: Props) {
-  const [step, setStep] = useState<Step>("team");
+  const [step, setStep] = useState<Step>(tournamentId ? "stadium" : "type");
+  const [mode, setMode] = useState<"international" | "club">("international");
+  const [leagueId, setLeagueId] = useState("urc");
   const [filter, setFilter] = useState<string>("all");
   const [home, setHome] = useState<TeamData>(getTeam("ire"));
   const [away, setAway] = useState<TeamData>(getTeam("fra"));
@@ -44,6 +48,7 @@ export default function PlaySetup({ user, bindings, tournamentId, go, setInMatch
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [matchNo, setMatchNo] = useState(0);
+  const [preview, setPreview] = useState<string | null>(null);
 
   useEffect(() => {
     if (!tournamentId) return;
@@ -82,13 +87,19 @@ export default function PlaySetup({ user, bindings, tournamentId, go, setInMatch
     return () => window.clearTimeout(t);
   }, [step]);
 
-  const teams = useMemo(() => (filter === "all" ? TEAMS : (getCompetition(filter)?.teamIds.map(getTeam) ?? TEAMS)), [filter]);
+  const teams = useMemo(() => {
+    const byRating = (a: TeamData, b: TeamData) => b.rating - a.rating;
+    if (mode === "international") return [...INTERNATIONAL_TEAMS].sort(byRating);
+    const lg = CLUB_LEAGUES.find((l) => l.id === leagueId);
+    return (lg?.teamIds.map(getTeam) ?? [...TEAMS]).sort(byRating);
+  }, [mode, leagueId]);
   const kits = pickKits(home, away);
+  const activeLeague = CLUB_LEAGUES.find((l) => l.id === leagueId);
   const competitionName = tournament
     ? (getCompetition(tournament.state.competitionId)?.name ?? "Competition")
-    : filter !== "all"
-      ? (getCompetition(filter)?.name ?? "Friendly")
-      : "Friendly";
+    : mode === "international"
+      ? "International Friendly"
+      : (activeLeague?.name ?? "Club Friendly");
   const config: MatchConfig = {
     home, away, userTeam, halfSeconds, difficulty, homeColor: kits.home, awayColor: kits.away, competition: competitionName, stadiumId: stadium.id,
   };
@@ -141,7 +152,7 @@ export default function PlaySetup({ user, bindings, tournamentId, go, setInMatch
           onQuit={() => (tournament ? go({ name: "hub", id: tournament.id }) : go({ name: "menu" }))}
         />
         {step === "result" && result && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/70">
+          <div className="absolute inset-0 flex items-center justify-center bg-[#05070d]/72">
             <Panel className="max-h-[92vh] w-[1000px] max-w-[95vw] overflow-y-auto p-7 slide-in scroll">
               <Kicker>Full time · {competitionName}</Kicker>
               <div className="mt-4 flex items-center justify-between gap-4">
@@ -185,14 +196,28 @@ export default function PlaySetup({ user, bindings, tournamentId, go, setInMatch
     );
   }
 
-  const steps: Step[] = tournament ? ["stadium", "settings"] : ["team", "opponent", "stadium", "settings"];
+  const steps: Step[] = tournament
+    ? ["stadium", "settings"]
+    : mode === "international"
+      ? ["type", "team", "opponent", "stadium", "settings"]
+      : ["type", "league", "team", "opponent", "stadium", "settings"];
 
   return (
     <div className="flex h-full flex-col">
       <ScreenHeader
         kicker={tournament ? `${competitionName} · ${fixtureLabel}` : "Quick match"}
         title={
-          step === "team" ? "Choose your team" : step === "opponent" ? "Choose the opposition" : step === "stadium" ? "Choose the stadium" : "Match settings"
+          step === "type"
+            ? "Club or country?"
+            : step === "league"
+              ? "Select league"
+              : step === "team"
+                ? mode === "international" ? "Select country" : "Select club"
+                : step === "opponent"
+                  ? "Select opposition"
+                  : step === "stadium"
+                    ? "Choose the stadium"
+                    : "Match settings"
         }
         right={
           <ol className="flex gap-2">
@@ -221,46 +246,120 @@ export default function PlaySetup({ user, bindings, tournamentId, go, setInMatch
       </Panel>
 
       <div className="min-h-0 flex-1">
+        {step === "type" && (
+          <div className="grid h-full gap-4 md:grid-cols-2">
+            <button
+              onClick={() => { setMode("international"); setStep("team"); }}
+              className="group relative overflow-hidden border-2 border-black bg-black/50 p-6 text-left shadow-[4px_4px_0_#000] transition hover:-translate-y-1 hover:border-yellow-400"
+            >
+              <Kicker>International</Kicker>
+              <h3 className="font-pixel mt-3 text-xl uppercase leading-relaxed">Countries</h3>
+              <p className="mt-2 max-w-sm text-slate-300">Pick a national team. Every country is ranked by rating, from the Springboks down.</p>
+              <div className="mt-5 flex flex-wrap gap-1.5">
+                {INTERNATIONAL_TEAMS.slice(0, 10).map((t) => (
+                  <Flag key={t.id} id={flagFor(t.country)} size={26} title={t.country} />
+                ))}
+              </div>
+              <span className="font-pixel mt-6 inline-block text-[9px] uppercase text-yellow-300">{INTERNATIONAL_TEAMS.length} nations →</span>
+            </button>
+            <button
+              onClick={() => { setMode("club"); setStep("league"); }}
+              className="group relative overflow-hidden border-2 border-black bg-black/50 p-6 text-left shadow-[4px_4px_0_#000] transition hover:-translate-y-1 hover:border-yellow-400"
+            >
+              <Kicker>Club</Kicker>
+              <h3 className="font-pixel mt-3 text-xl uppercase leading-relaxed">Leagues</h3>
+              <p className="mt-2 max-w-sm text-slate-300">Choose a league first — URC, Top 14, Premiership or Super Rugby — then pick your club.</p>
+              <div className="mt-5 flex flex-wrap gap-1.5">
+                {CLUB_LEAGUES.map((l) => (
+                  <span key={l.id} className="font-pixel px-2 py-1 text-[8px] text-black" style={{ background: l.color }}>{l.short}</span>
+                ))}
+              </div>
+              <span className="font-pixel mt-6 inline-block text-[9px] uppercase text-yellow-300">{CLUB_LEAGUES.length} leagues →</span>
+            </button>
+          </div>
+        )}
+
+        {step === "league" && (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {CLUB_LEAGUES.map((l) => {
+              const leagueTeams = l.teamIds.map(getTeam);
+              const top = [...leagueTeams].sort((a, b) => b.rating - a.rating)[0];
+              return (
+                <button
+                  key={l.id}
+                  onClick={() => { setLeagueId(l.id); setStep("team"); }}
+                  className="border-2 border-black bg-black/50 p-5 text-left shadow-[4px_4px_0_#000] transition hover:-translate-y-1 hover:border-yellow-400"
+                >
+                  <span className="block h-1.5 w-14" style={{ background: l.color }} />
+                  <h3 className="font-pixel mt-3 text-sm uppercase leading-relaxed">{l.name}</h3>
+                  <p className="mt-1.5 text-slate-400">{l.tagline}</p>
+                  <div className="mt-4 flex items-center justify-between">
+                    <span className="text-sm text-slate-400">{leagueTeams.length} clubs · best {top.name}</span>
+                    <Stars value={starsFor(top.rating)} />
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         {(step === "team" || step === "opponent") && (
           <div className="flex h-full flex-col">
-            <div className="mb-2 flex flex-wrap gap-2">
-              {[{ id: "all", short: "All" }, ...COMPETITIONS].map((c) => (
-                <Btn key={c.id} selected={filter === c.id} primary={filter === c.id} className="!py-2 !text-[8px]" onClick={() => setFilter(c.id)}>
-                  {c.short}
-                </Btn>
-              ))}
-            </div>
             <Scroll className="pr-2">
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-7">
-                {teams.map((t) => {
-                  const selected = step === "team" ? home.id === t.id : away.id === t.id;
-                  const disabled = step === "opponent" && t.id === home.id;
-                  return (
-                    <button
-                      key={t.id}
-                      disabled={disabled}
-                      onClick={() => {
-                        if (step === "team") {
-                          setHome(t);
-                          setStadium(getStadium(t.stadiumId));
-                          if (away.id === t.id) setAway(teams.find((x) => x.id !== t.id) ?? away);
-                          setStep("opponent");
-                        } else {
-                          setAway(t);
-                          setStep("stadium");
-                        }
-                      }}
-                      className={`tile flex items-center gap-2 p-2 disabled:opacity-30 ${selected ? "small-selected" : ""}`}
-                    >
-                      <Crest team={t} size={30} />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate font-bold leading-tight">{t.name}</p>
-                        <p className="text-slate-400">{t.country}</p>
-                      </div>
-                      <span className="font-pixel text-[9px] text-yellow-300">{t.rating}</span>
-                    </button>
-                  );
-                })}
+              {/* Left: the team list. Right: a globe showing where the highlighted team is from. */}
+              <div className="grid gap-4 lg:grid-cols-[1fr_300px]">
+                <div>
+                  <p className="font-pixel mb-2 text-[8px] uppercase tracking-widest text-slate-400">
+                    {teams.length} teams · click to {step === "team" ? "select" : "choose the opposition"}
+                  </p>
+                  <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-4">
+                    {teams.map((t, rank) => {
+                      const selected = step === "team" ? home.id === t.id : away.id === t.id;
+                      const disabled = step === "opponent" && t.id === home.id;
+                      return (
+                        <button
+                          key={t.id}
+                          disabled={disabled}
+                          onClick={() => {
+                            if (step === "team") {
+                              setHome(t);
+                              setStadium(getStadium(t.stadiumId));
+                              if (away.id === t.id) setAway(teams.find((x) => x.id !== t.id) ?? away);
+                              setStep("opponent");
+                            } else {
+                              setAway(t);
+                              setStep("stadium");
+                            }
+                          }}
+                          onMouseEnter={() => setPreview(t.id)}
+                          className={`flex items-center gap-2.5 border-2 p-2.5 text-left transition disabled:opacity-30 ${
+                            selected
+                              ? "border-yellow-400 bg-yellow-400/10 shadow-[3px_3px_0_#000]"
+                              : "border-black bg-black/45 hover:-translate-y-0.5 hover:border-white/30"
+                          }`}
+                        >
+                          <Flag id={flagFor(t.country)} size={30} title={t.country} />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate font-bold leading-tight">
+                              {mode === "international" && <span className="mr-1 text-slate-500">#{rank + 1}</span>}
+                              {t.name}
+                            </span>
+                            <span className="mt-0.5 flex items-center gap-1.5">
+                              <Stars value={starsFor(t.rating)} />
+                              <span className="text-xs text-slate-500">{t.country}</span>
+                            </span>
+                          </span>
+                          <span className="font-pixel shrink-0 text-[10px] text-yellow-300">{t.rating}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <GlobePanel
+                  team={getTeam(preview ?? home.id)}
+                  stadium={(() => { const st = getTeam(preview ?? home.id).stadiumId; return st ? getStadium(st) : null; })()}
+                />
               </div>
             </Scroll>
           </div>
@@ -337,8 +436,24 @@ export default function PlaySetup({ user, bindings, tournamentId, go, setInMatch
       </div>
 
       <div className="mt-3 flex gap-3">
-        {step !== "team" && !(tournament && step === "stadium") && (
-          <Btn onClick={() => setStep(step === "opponent" ? "team" : step === "stadium" ? "opponent" : "stadium")}>← Back</Btn>
+        {step !== "type" && !(tournament && step === "stadium") && (
+          <Btn
+            onClick={() =>
+              setStep(
+                step === "league"
+                  ? "type"
+                  : step === "team"
+                    ? mode === "international" ? "type" : "league"
+                    : step === "opponent"
+                      ? "team"
+                      : step === "stadium"
+                        ? "opponent"
+                        : "stadium",
+              )
+            }
+          >
+            ← Back
+          </Btn>
         )}
         {step === "stadium" && <Btn primary onClick={() => setStep("settings")}>Continue →</Btn>}
         {step === "settings" && (

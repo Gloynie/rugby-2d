@@ -1,19 +1,28 @@
 import type { RugbyEngine } from "./engine";
 import { keyLabel, type Bindings } from "./controls";
 import type { FrameOptions, PlayerVisual, Renderer, Snapshot } from "./render";
-import { CameraShots } from "./camerashots";
+import { CameraShots, crowdReaction } from "./camerashots";
+import { COMPETITIONS } from "./data";
+import type { CardRecord } from "./engine";
 import type { Stadium, TeamIndex, Vec2 } from "./types";
 
-export type Scene = "intro" | "toss" | "tossChoice" | "live" | "try" | "replay" | "halftime" | "fulltime" | "scrum";
+export type Scene =
+  | "intro" | "toss" | "tossChoice" | "live" | "try" | "replay" | "halftime" | "fulltime" | "scrum"
+  | "stingerIn" | "stingerOut" | "card" | "crowdCam";
 
 const clamp = (v: number, a: number, b: number) => (v < a ? a : v > b ? b : v);
 const easeInOut = (k: number) => (k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2);
 const easeOut = (k: number) => 1 - Math.pow(1 - k, 3);
+const easeInOutCubic = (k: number) => (k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2);
 const lerp = (a: number, b: number, k: number) => a + (b - a) * k;
 
 const REPLAY_SPEED = 0.5;
 const REPLAY_LENGTH = 4.2;
 const RING_SECONDS = 10;
+/** Stoppage replays (knock-on, into touch) are short – just the incident. */
+const STOPPAGE_LENGTH = 2.6;
+/** Length of each branded replay wipe (in and out). */
+const STINGER_SECONDS = 0.8;
 const otherIdx = (t: TeamIndex): TeamIndex => (t === 0 ? 1 : 0);
 
 export interface DirectorOptions {
@@ -96,6 +105,17 @@ export class Director {
   /** Record what the renderer drew this frame so we can replay it later. */
   private replayLabel = "LAST PLAY";
   setReplayLabel(label: string): void { this.replayLabel = label; }
+  /** team the current replay is about – drives friendly-match stinger colours */
+  private replayTeam: TeamIndex | null = null;
+  /** where to go once the replay and its outgoing stinger finish */
+  private afterReplay: "live" | "card" | "crowdCam" = "live";
+  private seenCardSeq = 0;
+  private activeCard: CardRecord | null = null;
+  private lastReviewSeq = 0;
+  /** seconds until the next stoppage incident may trigger a replay */
+  private reviewCooldown = 0;
+  /** the replay came from a play-stopping incident rather than a try */
+  private stoppageReplay = false;
 
   record(snap: Snapshot, dt: number): void {
     this.ringTime += dt;
@@ -107,6 +127,21 @@ export class Director {
   /** Called after every engine step to detect events that deserve a scene. */
   afterStep(): void {
     const e = this.engine;
+    // Play-stopping incidents get a broadcast review too (knock-on, into touch, forward pass).
+    if (this.reviewCooldown > 0) this.reviewCooldown -= 1 / 60;
+    if (this.scene === "live" && e.reviewSeq > this.lastReviewSeq && this.reviewCooldown <= 0 && !this.opts.attract) {
+      this.lastReviewSeq = e.reviewSeq;
+      this.reviewCooldown = 12;   // don't replay every single whistle in a stop-start game
+      this.startReplay(e.reviewLabel, e.reviewTeam, "live", true);
+      return;
+    }
+    // A new card: review the incident (TMO-style replay), then show the card itself.
+    if (e.lastCard && e.lastCard.seq > this.seenCardSeq && !this.opts.attract) {
+      this.seenCardSeq = e.lastCard.seq;
+      this.activeCard = e.lastCard;
+      this.startReplay("TMO REVIEW", e.lastCard.team, "card");
+      return;
+    }
     const tries = e.tries[0] + e.tries[1];
     if (e.phase === "try" && tries > this.lastTries && e.tryScorer !== null) {
       this.lastTries = tries;
@@ -247,15 +282,8 @@ export class Director {
       case "live": {
         f.stepEngine = true;
         f.zoom = 1;
-        if (!paused && (this.engine.phase === "whistle" || this.engine.phase === "halftime")) {
-          const t2 = this.t * 0.4;
-          f.drawOverlay = (r) => CameraShots.crowdPan(r, { x: 60, y: 35 }, t2);
-        }
-        if (!paused && (this.engine.phase === "lineout" || this.engine.phase === "scrum")) {
-          const t2 = this.t;
-          const existing = f.drawOverlay;
-          f.drawOverlay = (r) => { existing?.(r); CameraShots.crowdWave(r, t2); };
-        }
+        // (The old crowd-wave / crowd-pan overlays painted lines across the pitch during
+        //  lineouts, scrums and stoppages. Removed – set pieces now show a clean pitch.)
         if (this.engine.scrumInteractive && this.engine.phase === "scrum") {
           this.scene = "scrum";
           this.t = 0;
@@ -346,14 +374,15 @@ export class Director {
           const teamColor = e.teams[scorer.team].color;
           f.drawOverlay = (r) => { CameraShots.celebration(r, scorer.name, teamColor); };
         } else f.drawOverlay = (r) => this.drawTry(r);
-        if (this.t > 2.2 || (skip && !this.opts.attract)) this.startReplay();
+        if (this.t > 2.2 || (skip && !this.opts.attract)) this.startReplay("TRY REPLAY", scorer?.team ?? null, "crowdCam");
         break;
       }
       case "replay": {
         if (!paused) this.replayT += dt * REPLAY_SPEED;
         const snap = this.sample(this.replayT);
         f.snapshot = snap;
-        f.zoom = 2;
+        // Settle: the replay punches in slightly then eases back to broadcast zoom.
+        f.zoom = (2 + 0.22 * Math.exp(-this.replayT * 3)) as 1 | 2;
         f.camTarget = snap.focus;
         f.camSpeed = 7;
         f.snapCam = this.replayFresh;
@@ -361,12 +390,73 @@ export class Director {
         f.hideHUD = true;
         f.letterbox = 1;
         f.frozen = true;
+        const rt = this.replayT;
         f.drawOverlay = (r) => {
           const h = e.teams[0].data.short;
           const a = e.teams[1].data.short;
           CameraShots.replay(r, this.replayLabel ?? "LAST PLAY", h, a, e.score[0], e.score[1], e.gameMinute());
+          // Broadcast flash as the replay cuts in, gone within half a second.
+          if (rt < 0.5) r.rect(0, 0, r.bufW, r.bufH, `rgba(255,255,255,${(0.32 * (1 - rt / 0.5)).toFixed(3)})`);
         };
-        if (this.replayT >= this.replayEnd || (skip && !this.opts.attract)) this.endReplay();
+        if (this.replayT >= this.replayEnd || (skip && !this.opts.attract)) {
+          this.scene = "stingerOut";
+          this.t = 0;
+        }
+        break;
+      }
+      case "stingerIn": {
+        // Branded wipe INTO the replay. Frozen frame underneath; switch once fully covered.
+        f.frozen = true;
+        f.hideHUD = true;
+        const k = clamp(this.t / STINGER_SECONDS, 0, 1);
+        f.drawOverlay = (r) => this.drawStinger(r, k, true);
+        if (k >= 1 || (skip && !this.opts.attract)) {
+          this.scene = "replay";
+          this.t = 0;
+          this.replayFresh = true;
+        }
+        break;
+      }
+      case "stingerOut": {
+        // Branded wipe OUT of the replay, revealing the live (frozen) game again.
+        f.frozen = true;
+        f.hideHUD = true;
+        const k = clamp(this.t / STINGER_SECONDS, 0, 1);
+        f.drawOverlay = (r) => this.drawStinger(r, k, false);
+        if (k >= 1 || (skip && !this.opts.attract)) this.endReplay();
+        break;
+      }
+      case "crowdCam": {
+        // Crowd reaction: cut to the stands after a try while the stadium erupts.
+        f.frozen = true;
+        f.zoom = 2;
+        f.hideHUD = true;
+        f.letterbox = 1;
+        f.camSpeed = 6;
+        const side = this.replayTeam === 1 ? 1 : 0;
+        f.camTarget = { x: 60 + (side ? 26 : -26), y: side ? 52 : 18 };
+        f.drawOverlay = (r) => { crowdReaction(r, this.t, e.teams[this.replayTeam ?? 0].color); };
+        if (this.t > 2.1 || (skip && this.t > 0.5 && !this.opts.attract)) {
+          this.scene = "stingerOut";
+          this.t = 0;
+        }
+        break;
+      }
+      case "card": {
+        // Referee shows the card: camera on the ref, card rises into shot.
+        f.frozen = true;
+        f.zoom = 2;
+        f.hideHUD = true;
+        f.letterbox = 1;
+        f.camSpeed = 5;
+        f.camTarget = { x: e.referee.pos.x, y: e.referee.pos.y };
+        const card = this.activeCard;
+        f.drawOverlay = (r) => { if (card) this.drawCardShown(r, card); };
+        if (this.t > 3 || (skip && this.t > 0.5 && !this.opts.attract)) {
+          this.activeCard = null;
+          this.scene = "live";
+          this.t = 0;
+        }
         break;
       }
       case "halftime":
@@ -397,32 +487,200 @@ export class Director {
   }
 
   // ---------- replay ----------
-  private startReplay(): void {
+  private startReplay(label: string, team: TeamIndex | null, after: "live" | "card" | "crowdCam", stoppage = false): void {
+    this.afterReplay = after;
+    this.stoppageReplay = stoppage;
+    this.replayTeam = team;
+    this.replayLabel = label;
     if (this.ring.length < 10) {
-      this.endReplay();
+      // Not enough footage – skip straight to whatever follows the replay.
+      this.finishReplayFlow();
       return;
     }
-    const e = this.engine;
-    this.replayLabel =
-      e.phase === "try" ? "TRY REPLAY"
-      : e.phase === "penaltyChoice" ? "PENALTY SHOT"
-      : e.phase === "goalKick" ? "GOAL KICK"
-      : e.phase === "scrum" ? "SCRUM"
-      : e.phase === "lineout" ? "LINEOUT"
-      : "LAST PLAY";
     const end = this.ring[this.ring.length - 1].t;
-    this.replayT = Math.max(this.ring[0].t, end - REPLAY_LENGTH);
+    // A stoppage only needs the last couple of seconds; a try gets the full build-up.
+    const length = stoppage ? STOPPAGE_LENGTH : REPLAY_LENGTH;
+    this.replayT = Math.max(this.ring[0].t, end - length);
     this.replayEnd = end;
-    this.replayFresh = true;
-    this.scene = "replay";
+    this.scene = "stingerIn";
     this.t = 0;
   }
 
   private endReplay(): void {
+    this.finishReplayFlow();
+  }
+
+  private finishReplayFlow(): void {
+    if (this.afterReplay === "crowdCam") {
+      this.afterReplay = "live";
+      this.scene = "crowdCam";
+      this.t = 0;
+      return;
+    }
+    if (this.afterReplay === "card" && this.activeCard) {
+      this.scene = "card";
+      this.t = 0;
+      return;
+    }
     this.engine.phaseTimer = Math.min(this.engine.phaseTimer, 0.35);
     this.engine.message.timer = 0;
     this.scene = "live";
     this.t = 0;
+  }
+
+  // ---------- broadcast branding ----------
+  /**
+   * Broadcast package for the current match: each real competition has its own wipe style
+   * and colours. Friendlies / online / Ultimate Team use the colours of the team the replay
+   * is about, so a try replay is wrapped in the scorer's kit colours.
+   */
+  private brand(): { style: "rings" | "swoosh" | "shutters"; c: [string, string, string]; title: string; chip: string | null } {
+    const e = this.engine;
+    const name = (this.opts.competition || "").toLowerCase();
+    const comp = COMPETITIONS.find(
+      (c) => name.includes(c.name.toLowerCase()) || name === c.short.toLowerCase() || name === c.id,
+    );
+    const focus = this.replayTeam;
+    const chip = focus !== null ? e.teams[focus].data.short : null;
+    const table: Record<string, { style: "rings" | "swoosh" | "shutters"; c: [string, string, string]; title: string }> = {
+      rwc: { style: "rings", c: ["#c9a227", "#0b1020", "#f8fafc"], title: "RUGBY WORLD CUP" },
+      sixnations: { style: "swoosh", c: ["#15803d", "#0b2e1b", "#f8fafc"], title: "SIX NATIONS" },
+      rugbychampionship: { style: "swoosh", c: ["#166534", "#0b1020", "#facc15"], title: "THE RUGBY CHAMPIONSHIP" },
+      urc: { style: "shutters", c: ["#0ea5e9", "#0b1020", "#f8fafc"], title: "UNITED RUGBY CHAMPIONSHIP" },
+      premiership: { style: "shutters", c: ["#dc2626", "#111827", "#f8fafc"], title: "PREMIERSHIP RUGBY" },
+      superrugby: { style: "swoosh", c: ["#7c3aed", "#0b1020", "#f8fafc"], title: "SUPER RUGBY PACIFIC" },
+    };
+    if (comp && table[comp.id]) return { ...table[comp.id], chip };
+    // Friendly / Ultimate / online: kit colours of the team in focus (home team otherwise).
+    const t = focus ?? 0;
+    const td = e.teams[t].data;
+    const opp = e.teams[t === 0 ? 1 : 0].data;
+    return {
+      style: "swoosh",
+      c: [e.teams[t].color, td.secondary === e.teams[t].color ? "#0b1020" : td.secondary, "#f8fafc"],
+      title: `${td.short} v ${opp.short}`,
+      chip,
+    };
+  }
+
+  /**
+   * Full-screen branded transition. `entering` = wiping into the replay (covers the screen);
+   * otherwise wiping out of it (uncovers). k runs 0..1.
+   */
+  private drawStinger(r: Renderer, k: number, entering: boolean): void {
+    const b = r.drawBuffer;
+    const W = r.bufW;
+    const H = r.bufH;
+    const br = this.brand();
+    // cover 0..1: rises on entry, falls on exit; holds fully covered around the middle
+    const cover = entering ? easeInOutCubic(clamp(k / 0.62, 0, 1)) : 1 - easeInOutCubic(clamp((k - 0.38) / 0.62, 0, 1));
+    // Dip toward black first so the cut feels like a broadcast transition, not a hard swipe.
+    if (entering && cover < 0.45) r.rect(0, 0, W, H, `rgba(2,4,10,${(cover * 1.6).toFixed(3)})`);
+    if (!entering && cover > 0.55) r.rect(0, 0, W, H, `rgba(2,4,10,${((cover - 0.55) * 1.4).toFixed(3)})`);
+    const poly = (pts: [number, number][], color: string) => {
+      b.fillStyle = color;
+      b.beginPath();
+      b.moveTo(pts[0][0], pts[0][1]);
+      for (let i = 1; i < pts.length; i++) b.lineTo(pts[i][0], pts[i][1]);
+      b.closePath();
+      b.fill();
+    };
+
+    if (br.style === "rings") {
+      // Expanding concentric rings from the centre (World Cup).
+      const maxR = Math.hypot(W, H) * 0.62;
+      const cx = W / 2;
+      const cy = H / 2;
+      for (let i = 0; i < 3; i++) {
+        const rr = maxR * clamp(cover * 1.25 - i * 0.12, 0, 1);
+        if (rr <= 0) continue;
+        b.fillStyle = br.c[i];
+        b.beginPath();
+        b.arc(cx, cy, rr, 0, Math.PI * 2);
+        b.fill();
+      }
+    } else if (br.style === "shutters") {
+      // Horizontal shutters closing from alternate sides (URC / Premiership).
+      const n = 6;
+      const bh = Math.ceil(H / n);
+      for (let i = 0; i < n; i++) {
+        const c = clamp(cover * 1.3 - (i % 3) * 0.1, 0, 1);
+        const w = Math.ceil(W * c);
+        const color = i % 2 ? br.c[1] : br.c[0];
+        if (entering ? i % 2 === 0 : i % 2 === 1) r.rect(0, i * bh, w, bh, color);
+        else r.rect(W - w, i * bh, w, bh, color);
+      }
+    } else {
+      // Slanted bands sweeping across (Six Nations / Championship / Super Rugby / friendlies).
+      const slant = H * 0.55;
+      for (let i = 2; i >= 0; i--) {
+        const c = clamp(cover * 1.3 - i * 0.12, 0, 1);
+        if (c <= 0) continue;
+        const edge = c * (W + slant * 2) - slant;
+        if (entering) {
+          poly([[-slant, 0], [edge + slant, 0], [edge, H], [-slant * 2, H]], br.c[i]);
+        } else {
+          // exiting: the left edge chases the bands off to the right
+          const left = (1 - c) * (W + slant * 2) - slant;
+          poly([[left + slant, 0], [W + slant * 2, 0], [W + slant, H], [left, H]], br.c[i]);
+        }
+      }
+    }
+
+    // Logo plate while (nearly) covered.
+    if (cover > 0.82) {
+      const a = clamp((cover - 0.82) / 0.18, 0, 1);
+      b.globalAlpha = a;
+      const label = this.replayLabel === "TMO REVIEW" ? "TMO REVIEW" : entering ? "ACTION REPLAY" : "BACK TO LIVE";
+      const pw = Math.max(r.measure(br.title, 12), r.measure(label, 8)) + 46;
+      const px = W / 2 - pw / 2;
+      const py = H / 2 - 30;
+      r.rect(px, py, pw, 60, "rgba(3,6,14,0.92)");
+      r.rect(px, py, pw, 3, br.c[0]);
+      r.rect(px, py + 57, pw, 3, br.c[0]);
+      r.text(br.title, W / 2, py + 12, { align: "center", size: 12, color: "#ffffff" });
+      r.text(label, W / 2, py + 36, { align: "center", size: 8, color: br.c[0] === "#0b1020" ? "#facc15" : br.c[0] });
+      if (br.chip) {
+        const cw = r.measure(br.chip, 7) + 12;
+        r.rect(px + pw - cw - 6, py + 34, cw, 13, br.c[1]);
+        r.text(br.chip, px + pw - cw / 2 - 6, py + 37, { align: "center", size: 7, color: "#ffffff" });
+      }
+      b.globalAlpha = 1;
+    }
+  }
+
+  /** The referee holds up the card; name, reason and sanction below. */
+  private drawCardShown(r: Renderer, card: CardRecord): void {
+    const e = this.engine;
+    const yellow = card.type === "yellow";
+    const col = yellow ? "#facc15" : "#ef4444";
+    const rise = easeOut(clamp(this.t / 0.45, 0, 1));
+    const W = r.bufW;
+    const H = r.bufH;
+    // The card itself: a tall rectangle that rises into frame with a slight tilt feel.
+    const cw = 34;
+    const ch = 48;
+    const cx = W / 2 + 96;
+    const cy = H / 2 - 70 + (1 - rise) * 80;
+    r.rect(cx - cw / 2 + 3, cy + 3, cw, ch, "rgba(0,0,0,0.5)");
+    r.rect(cx - cw / 2, cy, cw, ch, col);
+    r.rect(cx - cw / 2, cy, cw, 3, yellow ? "#fef08a" : "#fca5a5");
+    // the referee's hand gripping the bottom of the card
+    r.rect(cx - 5, cy + ch - 4, 10, 9, "#e6b48c");
+
+    // Panel
+    const pw = 300;
+    const px = W / 2 - pw / 2 - 30;
+    const py = H - 96;
+    r.panel(px, py, pw, 60, { fill: "rgba(3,6,14,0.94)", accent: col });
+    r.text(yellow ? "YELLOW CARD" : "RED CARD", px + 14, py + 8, { size: 11, color: col });
+    r.text(card.name.toUpperCase().slice(0, 24), px + 14, py + 26, { size: 8, color: "#ffffff" });
+    r.text(`${e.teams[card.team].data.short} · ${card.reason.toUpperCase().slice(0, 30)}`, px + 14, py + 40, { size: 6, color: "#94a3b8" });
+    r.text(yellow ? "10 MIN SIN BIN" : "SENT OFF", px + pw - 12, py + 8, { align: "right", size: 7, color: col });
+    r.text(`${card.minute}'`, px + pw - 12, py + 40, { align: "right", size: 8, color: "#cbd5e1" });
+    if (!this.opts.attract && Math.floor(this.t * 2) % 2 === 0) {
+      r.text(`${keyLabel(this.opts.bindings.action, true)} CONTINUE`, W - 10, 10, { align: "right", size: 7, color: "#94a3b8" });
+    }
   }
 
   private sample(T: number): Snapshot {
@@ -433,8 +691,11 @@ export class Director {
     const b = r[Math.min(i + 1, r.length - 1)];
     const span = b.t - a.t;
     const k = span > 0 ? clamp((T - a.t) / span, 0, 1) : 0;
-    const players: PlayerVisual[] = a.players.map((p, idx) => {
-      const q = b.players[idx] ?? p;
+    // Match by player id, not array index: a card or substitution changes who is on the
+    // field mid-buffer, and index matching would blend players into the wrong people.
+    const next = new Map(b.players.map((q) => [q.id, q] as const));
+    const players: PlayerVisual[] = a.players.map((p) => {
+      const q = next.get(p.id) ?? p;
       return { ...p, x: lerp(p.x, q.x, k), y: lerp(p.y, q.y, k) };
     });
     const ball = { ...a.ball, x: lerp(a.ball.x, b.ball.x, k), y: lerp(a.ball.y, b.ball.y, k), z: lerp(a.ball.z, b.ball.z, k) };

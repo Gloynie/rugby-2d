@@ -1,8 +1,10 @@
 import type { Competition, TeamData } from "../types";
 import { INTERNATIONAL_TEAMS } from "./internationals";
-import { PREMIERSHIP_TEAMS, SUPER_RUGBY_TEAMS, URC_TEAMS } from "./clubs";
+import { PREMIERSHIP_TEAMS, SUPER_RUGBY_TEAMS, TOP14_TEAMS, URC_TEAMS } from "./clubs";
 
 export { STADIUMS, getStadium } from "./stadiums";
+export { INTERNATIONAL_TEAMS } from "./internationals";
+export { URC_TEAMS, PREMIERSHIP_TEAMS, SUPER_RUGBY_TEAMS, TOP14_TEAMS } from "./clubs";
 export type { TeamData } from "../types";
 
 import { applyRosterOverride } from "./rosterOverrides";
@@ -13,6 +15,7 @@ export const TEAMS: TeamData[] = [
   ...URC_TEAMS,
   ...PREMIERSHIP_TEAMS,
   ...SUPER_RUGBY_TEAMS,
+  ...TOP14_TEAMS,
 ].map((t) => ({ ...t, players: applyRosterOverride(t.id, t.players) }));
 
 // Auto-pad player lists to at least 23 players for every team
@@ -103,6 +106,18 @@ export const COMPETITIONS: Competition[] = [
       "Ten English clubs battle through the regular season. The top four reach the semi-finals, with the final at Twickenham.",
   },
   {
+    id: "top14",
+    name: "Top 14",
+    short: "TOP 14",
+    format: "league",
+    teamIds: TOP14_TEAMS.map((t) => t.id),
+    playoffTeams: 4,
+    color: "#f97316",
+    tagline: "French club rugby's top flight",
+    description:
+      "Eight French giants battle through the regular season. The top four reach the semi-finals on the road to the Bouclier de Brennus.",
+  },
+  {
     id: "superrugby",
     name: "Super Rugby Pacific",
     short: "SRP",
@@ -118,6 +133,35 @@ export const COMPETITIONS: Competition[] = [
 
 export function getCompetition(id: string): Competition | undefined {
   return COMPETITIONS.find((c) => c.id === id);
+}
+
+export interface ClubLeague {
+  id: string;
+  name: string;
+  short: string;
+  teamIds: string[];
+  color: string;
+  tagline: string;
+}
+
+/** Domestic leagues used by the Kick-Off club picker. */
+export const CLUB_LEAGUES: ClubLeague[] = [
+  { id: "urc", name: "United Rugby Championship", short: "URC", teamIds: URC_TEAMS.map((t) => t.id), color: "#0ea5e9", tagline: "Ireland · Italy · Scotland · South Africa · Wales" },
+  { id: "top14", name: "Top 14", short: "TOP 14", teamIds: TOP14_TEAMS.map((t) => t.id), color: "#f97316", tagline: "France's top flight" },
+  { id: "premiership", name: "Gallagher Premiership", short: "PREM", teamIds: PREMIERSHIP_TEAMS.map((t) => t.id), color: "#dc2626", tagline: "England's elite clubs" },
+  { id: "superrugby", name: "Super Rugby Pacific", short: "SRP", teamIds: SUPER_RUGBY_TEAMS.map((t) => t.id), color: "#7c3aed", tagline: "New Zealand · Australia · Pacific" },
+];
+
+/** Star rating out of 5 (half stars allowed) for a team's overall rating. */
+export function starsFor(rating: number): number {
+  if (rating >= 92) return 5;
+  if (rating >= 88) return 4.5;
+  if (rating >= 84) return 4;
+  if (rating >= 80) return 3.5;
+  if (rating >= 76) return 3;
+  if (rating >= 72) return 2.5;
+  if (rating >= 68) return 2;
+  return 1.5;
 }
 
 export function competitionsForTeam(teamId: string): Competition[] {

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { COMPETITIONS, POSITION_NAMES, TEAMS, getCompetition, getStadium, getTeam } from "@/game/data";
 import { buildAttributes } from "@/game/engine";
 import { MenuPad } from "@/game/gamepad";
+import { Flag, flagFor } from "./Flags";
 import type { TeamData } from "@/game/types";
 import { Btn, Crest, Kicker, PlayerSprite, ScreenHeader, Scroll } from "./ui";
 
@@ -122,7 +123,8 @@ export default function SquadsScreen() {
         <aside className="col-span-3 flex min-h-0 flex-col gap-2 xl:col-span-2">
           <div className="border-2 border-black bg-black/70 p-3 shadow-[3px_3px_0_#000]">
             <div className="flex items-center gap-2">
-              <Crest team={team} size={34} />
+              <Flag id={flagFor(team.country)} size={34} title={team.country} />
+              <Crest team={team} size={26} />
               <div className="min-w-0">
                 <p className="font-pixel truncate text-[9px] uppercase leading-tight">{team.name}</p>
                 <p className="truncate text-[14px] text-slate-400">{team.country}</p>

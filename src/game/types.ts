@@ -110,7 +110,7 @@ export interface PlayerState {
   rating: number;          // overall player rating
 }
 
-export type AnimKind = "none" | "pass" | "kick" | "dive" | "tackle" | "celebrate" | "sidestep" | "bounce" | "lie";
+export type AnimKind = "none" | "pass" | "kick" | "dive" | "tackle" | "celebrate" | "sidestep" | "bounce" | "lie" | "bind";
 
 export type KickKind = "punt" | "grubber" | "kickoff" | "dropout" | "dropgoal" | "conversion" | "penalty";
 
@@ -231,6 +231,8 @@ export interface TeamMatchStats {
   possessionSeconds: number;
   territorySeconds: number;
   passes: number;
+  yellowCards: number;
+  redCards: number;
 }
 
 export interface PlayerMatchRating {

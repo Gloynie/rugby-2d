@@ -129,7 +129,7 @@ export default function UltimateTeam({ user, bindings, go, setInMatch }: { user:
 
   return (
     <div className="flex h-full flex-col">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border-2 border-white/10 bg-gradient-to-r from-slate-900 to-slate-950 px-5 py-3">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border-2 border-[#141a21]/15 bg-white/80 px-5 py-3">
         <div className="flex items-center gap-4">
           <div className="grid h-12 w-12 place-items-center rounded-lg border-2" style={{ borderColor: club.primary, background: club.primary }}>
             <span className="font-pixel text-sm" style={{ color: club.secondary }}>{club.clubName.slice(0, 2).toUpperCase()}</span>
@@ -448,7 +448,7 @@ function PackReveal({ cards, index, onNext }: { cards: UltimateCard[]; index: nu
   const positionGroup = card.position <= 8 ? "FORWARD" : "BACK";
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/92 p-6" onClick={stage < 4 ? skip : undefined}>
+    <div className="on-dark fixed inset-0 z-[70] flex items-center justify-center bg-[#05070d]/92 p-6" onClick={stage < 4 ? skip : undefined}>
       {tier !== "plain" && (
         <>
           <div className={`walkout-rays pointer-events-none absolute inset-0 ${tier === "elite" ? "elite" : ""}`} />

@@ -10,6 +10,8 @@ const REPORT_ROWS: { key: keyof MatchResult["stats"][0]; label: string; format?:
   { key: "conversions", label: "Conversions" },
   { key: "scrumsWon", label: "Scrums won" },
   { key: "lineoutsWon", label: "Lineouts won" },
+  { key: "yellowCards", label: "Yellow cards" },
+  { key: "redCards", label: "Red cards" },
   { key: "tackles", label: "Tackles made" },
   { key: "lineBreaks", label: "Line breaks" },
   { key: "metresMade", label: "Metres made", format: (value) => `${Math.round(value)}m` },

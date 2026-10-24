@@ -24,12 +24,17 @@ const DEG = Math.PI / 180;
 const CATCH_R = 1.15;
 const TACKLE_R = 1.35;
 const GOAL_ELEV = 33 * DEG;
+/** Radians of aim error at the very edge of the accuracy bar. Lower = more forgiving. */
+const GOAL_AIM = 0.1;
+/** Half-gap between the goal posts, in metres. */
+const GOAL_HALF_GAP = 2.8;
 
 export function emptyTeamMatchStats(): TeamMatchStats {
   return {
     tries: 0, penalties: 0, dropGoals: 0, conversions: 0,
     scrumsWon: 0, lineoutsWon: 0, tackles: 0, lineBreaks: 0,
     metresMade: 0, possessionSeconds: 0, territorySeconds: 0, passes: 0,
+    yellowCards: 0, redCards: 0,
   };
 }
 
@@ -37,6 +42,8 @@ const clamp = (v: number, a: number, b: number) => (v < a ? a : v > b ? b : v);
 const hyp = (x: number, y: number) => Math.sqrt(x * x + y * y);
 const dist = (a: Vec2, b: Vec2) => hyp(a.x - b.x, a.y - b.y);
 const other = (t: TeamIndex): TeamIndex => (t === 0 ? 1 : 0);
+/** Global pace scale – everything runs a touch slower than arcade speed. */
+const PACE = 0.9;
 
 function hashStr(s: string): number {
   let h = 2166136261;
@@ -141,6 +148,26 @@ export interface PenaltyState {
   timer: number;
 }
 
+export interface CardRecord {
+  seq: number;
+  playerId: number;
+  team: TeamIndex;
+  name: string;
+  type: "yellow" | "red";
+  reason: string;
+  minute: number;
+  /** game-elapsed clock seconds when a yellow-carded player may return (null for red) */
+  returnAt: number | null;
+  returned: boolean;
+}
+
+/** Closest positional stand-in when a shirt number is off the field (sin bin / sent off). */
+const ROLE_FALLBACK: Record<number, number[]> = {
+  1: [3, 2, 4, 5, 6, 7, 8], 2: [1, 3, 8, 6, 7], 3: [1, 2, 4, 5, 6], 4: [5, 6, 8, 7], 5: [4, 6, 8, 7],
+  6: [7, 8, 4, 5], 7: [6, 8, 4, 5], 8: [6, 7, 4, 5], 9: [10, 12, 15, 13], 10: [12, 15, 9, 13],
+  11: [14, 15, 13, 12], 12: [13, 10, 15, 11], 13: [12, 14, 11, 15], 14: [11, 15, 13, 12], 15: [11, 14, 10, 13],
+};
+
 export type LineoutTarget = "front" | "middle" | "back";
 export type LineoutPlay = "clean" | "short" | "maul";
 export type LineoutStage = "numbers" | "target" | "play" | "ready";
@@ -157,6 +184,14 @@ export interface LineoutState {
   aiTimer: number;
   /** Defensive pod guesses the throw location; matching it makes a steal likelier. */
   defenceTarget: LineoutTarget;
+  /** "lifting" = jumpers rise, "throwing" = ball is in flight, "done" = ball is in */
+  action: "waiting" | "lifting" | "throwing" | "done";
+  actionTimer: number;
+  /** shirt number of the jumper and the defending jumper, resolved when the throw happens */
+  jumperNo: number;
+  defenderNo: number;
+  /** set when the throw resolves the contest */
+  decided: "attacker" | "defence" | null;
 }
 
 export interface RestartInfo {
@@ -247,6 +282,15 @@ export class RugbyEngine {
   goalKick: GoalKickState | null = null;
   penalty: PenaltyState | null = null;
   lineout: LineoutState | null = null;
+  /** every card shown this match, in order */
+  cards: CardRecord[] = [];
+  /** latest card (the director watches this to run the card cutscene) */
+  lastCard: CardRecord | null = null;
+  private cardSeq = 0;
+  /** penalties conceded per team since their last card – repeated infringement → yellow */
+  private infringements: [number, number] = [0, 0];
+  /** replacement player id → the shirt slot they took over */
+  private slotOf = new Map<number, number>();
   kickCharge = 0;
   charging = false;
   inGoalTimer = 0;
@@ -403,12 +447,152 @@ export class RugbyEngine {
   teamName(t: TeamIndex): string {
     return this.teams[t].data.name;
   }
+  /** On-field player currently filling shirt slot `number` (original player or their replacement). */
+  private slotHolder(team: TeamIndex, number: number): PlayerState | undefined {
+    for (const q of this.players) {
+      if (q.team !== team || !q.isOnField) continue;
+      if (q.number === number && !this.slotOf.has(q.id)) return q;
+      if (this.slotOf.get(q.id) === number) return q;
+    }
+    return undefined;
+  }
+
+  /**
+   * The player who plays shirt `number` right now. Follows substitutions, and if that slot is
+   * empty (sin bin or red card) borrows the closest positional equivalent so set pieces and
+   * restarts never hand the ball to someone who is off the field.
+   */
   pl(team: TeamIndex, number: number): PlayerState {
-    // Find player by shirt number (active or on bench)
-    const p = this.players.find((pl) => pl.team === team && pl.number === number);
-    if (p) return p;
-    // Fallback if not found
-    return this.players.find((pl) => pl.team === team && pl.isOnField) || this.players[team === 0 ? 0 : 15];
+    const holder = this.slotHolder(team, number);
+    if (holder) return holder;
+    for (const n of ROLE_FALLBACK[number] ?? []) {
+      const q = this.slotHolder(team, n);
+      if (q) return q;
+    }
+    return (
+      this.players.find((q) => q.team === team && q.isOnField) ??
+      this.players.find((q) => q.team === team && q.number === number) ??
+      this.players[team === 0 ? 0 : 15]
+    );
+  }
+
+  /** Elapsed match time in clock seconds (continues across half-time). */
+  gameElapsed(): number {
+    return (this.half - 1) * this.halfSeconds + this.clock;
+  }
+
+  /** Yellow-carded players still in the sin bin, with clock seconds remaining. */
+  sinBinned(): { card: CardRecord; remaining: number }[] {
+    const now = this.gameElapsed();
+    return this.cards
+      .filter((c) => c.type === "yellow" && !c.returned && c.returnAt !== null)
+      .map((c) => ({ card: c, remaining: Math.max(0, (c.returnAt ?? now) - now) }));
+  }
+
+  /**
+   * Show a card. A second yellow becomes a red. The player leaves the field immediately and
+   * the team plays a man down – yellow for 10 game minutes, red for the rest of the match.
+   */
+  /** Flag a play-stopping incident so the broadcast can cut to a replay. */
+  reviewSeq = 0;
+  reviewLabel = "";
+  reviewTeam: TeamIndex | null = null;
+
+  pushReview(label: string, favoured: TeamIndex | null): void {
+    this.reviewSeq++;
+    this.reviewLabel = label;
+    this.reviewTeam = favoured;
+  }
+
+  showCard(player: PlayerState, type: "yellow" | "red", reason: string): void {
+    if (!player.isOnField) return;
+    const team = player.team;
+    let kind = type;
+    let why = reason;
+    if (kind === "yellow" && this.cards.some((c) => c.playerId === player.id && c.type === "yellow")) {
+      kind = "red";
+      why = "second yellow card";
+    }
+    const binSeconds = this.halfSeconds * (10 / 40);
+    const card: CardRecord = {
+      seq: ++this.cardSeq,
+      playerId: player.id,
+      team,
+      name: player.name,
+      type: kind,
+      reason: why,
+      minute: this.gameMinute(),
+      returnAt: kind === "yellow" ? this.gameElapsed() + binSeconds : null,
+      returned: false,
+    };
+    this.cards.push(card);
+    this.lastCard = card;
+    this.infringements[team] = 0;
+    if (kind === "yellow") this.teamStats[team].yellowCards++;
+    else this.teamStats[team].redCards++;
+
+    player.isOnField = false;
+    player.down = 0;
+    player.busy = 0;
+    player.anim = "none";
+    if (this.ball.carrier === player.id) this.ball.carrier = null;
+    if (this.controlled === player.id && this.userTeam !== null) {
+      this.controlled = this.nearestPlayer(this.userTeam, player.pos).id;
+    }
+    if (this.remoteControlled === player.id && this.remoteTeam !== null) {
+      this.remoteControlled = this.nearestPlayer(this.remoteTeam, player.pos).id;
+    }
+    const color = kind === "yellow" ? "#facc15" : "#ef4444";
+    this.say(
+      kind === "yellow" ? "YELLOW CARD" : "RED CARD",
+      `${player.name} – ${kind === "yellow" ? "10 minutes in the bin" : "sent off"}`,
+      color,
+      3,
+    );
+    this.pushComment(
+      kind === "yellow"
+        ? `Yellow card! ${player.name} is sin-binned for ${why}. ${this.teamName(team)} down to fourteen.`
+        : `Red card! ${player.name} is sent off for ${why}. ${this.teamName(team)} will finish a man short.`,
+      team,
+    );
+  }
+
+  /** Bring sin-binned players back once their ten minutes are up, at a sensible moment. */
+  private updateSinBin(): void {
+    // Wait for open play or a stoppage – never drop a player into the middle of a set piece.
+    const safe = this.phase === "play" || this.phase === "whistle" || this.phase === "kickoff" || this.phase === "penaltyChoice";
+    if (!safe) return;
+    const now = this.gameElapsed();
+    for (const c of this.cards) {
+      if (c.type !== "yellow" || c.returned || c.returnAt === null || now < c.returnAt) continue;
+      const p = this.players[c.playerId];
+      c.returned = true;
+      if (!p) continue;
+      p.isOnField = true;
+      p.down = 0;
+      p.busy = 0;
+      p.vel = { x: 0, y: 0 };
+      // Re-enter from the touchline at halfway.
+      p.pos = { x: 60, y: 0.8 };
+      this.say("BACK ON", `${p.name} returns from the sin bin`, this.teams[p.team].color, 2);
+      this.pushComment(`${p.name} is back on – ${this.teamName(p.team)} are up to fifteen again.`, p.team);
+    }
+  }
+
+  /**
+   * Record an infringement and decide whether it is a card. Repeated team offences and
+   * cynical play near the tryline are the classic yellow-card triggers.
+   */
+  private judgeInfringement(offender: PlayerState | null, team: TeamIndex, reason: string, nearOwnLine: boolean): void {
+    this.infringements[team]++;
+    if (!offender || !offender.isOnField) return;
+    if (nearOwnLine && this.rng() < 0.45) {
+      this.showCard(offender, "yellow", `${reason} near the line`);
+      return;
+    }
+    if (this.infringements[team] >= 4 && this.rng() < 0.6) {
+      this.showCard(offender, "yellow", "repeated team infringements");
+    }
   }
 
   /** Swap the ends each team attacks (used when a coin-toss winner chooses ends). */
@@ -445,6 +629,8 @@ export class RugbyEngine {
     
     playerOn.isOnField = true;
     playerOn.isBench = false;
+    // The replacement takes over the shirt slot, so set pieces find him in the right role.
+    this.slotOf.set(playerOn.id, this.slotOf.get(playerOff.id) ?? playerOff.number);
     playerOn.pos = { ...playerOff.pos };
     playerOn.facing = playerOff.facing;
     
@@ -755,6 +941,7 @@ export class RugbyEngine {
       if (p.tackleCooldown > 0) p.tackleCooldown -= dt;
     }
     if (this.skillCooldown > 0) this.skillCooldown -= dt;
+    this.updateSinBin();
     switch (this.phase) {
       case "kickoff":
       case "dropout":
@@ -1254,7 +1441,7 @@ export class RugbyEngine {
   }
 
   private movePlayer(p: PlayerState, desired: Vec2, sprint: boolean, dt: number): void {
-    let maxSpeed = p.attrs.speed;
+    let maxSpeed = p.attrs.speed * PACE;
     if (sprint) maxSpeed *= 1.18;
     if (this.ball.carrier === p.id) {
       maxSpeed *= 0.96;
@@ -1584,6 +1771,7 @@ export class RugbyEngine {
     const dir = this.teams[t].dir;
     if (b.vel.x * dir > 0.8) {
       this.say("FORWARD PASS!", `Scrum to ${this.teamName(other(t))}`, "#f87171");
+      this.pushReview("FORWARD PASS", other(t));
       this.scheduleRestart("scrum", other(t), p.pos.x, p.pos.y);
       return;
     }
@@ -1915,6 +2103,7 @@ export class RugbyEngine {
     b.vel = { x: dir * 2.5 + (this.rng() - 0.5) * 2, y: (this.rng() - 0.5) * 2, z: 1 };
     b.pos.z = 1;
     this.say("KNOCK ON!", `${p.name} – scrum to ${this.teamName(other(p.team))}`, "#f87171");
+    this.pushReview("KNOCK ON", other(p.team));
     this.scheduleRestart("scrum", other(p.team), p.pos.x, p.pos.y);
   }
 
@@ -2052,6 +2241,11 @@ export class RugbyEngine {
       this.say("HIGH TACKLE!", `Penalty to ${this.teamName(c.team)}`, "#f87171");
       this.pushComment(`High tackle! Penalty to ${this.teamName(c.team)}.`, c.team);
       this.scheduleRestart("penalty", c.team, c.pos.x, c.pos.y);
+      // Contact with the head: referee decides the sanction.
+      const roll = this.rng();
+      this.infringements[t.team]++;
+      if (roll < 0.07) this.showCard(t, "red", "a dangerous high tackle");
+      else if (roll < 0.6) this.showCard(t, "yellow", "a high tackle");
       return;
     }
     if (this.fx(c.team, c.pos.x) >= 109.6) {
@@ -2179,7 +2373,10 @@ export class RugbyEngine {
       if (this.userOffsideWarning && r.userGrace <= 0) {
         const benefits = this.userTeam === def ? att : def;
         this.say("OFFSIDE!", `Penalty to ${this.teamName(benefits)}`, "#f87171");
+        const offTeam = this.userTeam;
+        const nearLine = offTeam === def && this.fx(att, r.x) > 100;
         this.scheduleRestart("penalty", benefits, r.x, r.y);
+        this.judgeInfringement(u, offTeam, "offside", nearLine);
         return;
       }
     }
@@ -2195,16 +2392,29 @@ export class RugbyEngine {
     const d = r.joined[def].size;
     const roll = this.rng();
     this.userOffsideWarning = false;
+    const ruckOffender = (team: TeamIndex): PlayerState | null => {
+      const ids = [...r.joined[team]].filter((id) => this.players[id]?.isOnField);
+      if (ids.length) return this.players[ids[Math.floor(this.rng() * ids.length)]];
+      return this.nearestPlayer(team, { x: r.x, y: r.y });
+    };
     if (roll < 0.05) {
       const reasons = ["Offside at the ruck", "Hands in the ruck", "Not rolling away"];
-      this.say(reasons[Math.floor(this.rng() * reasons.length)], `Penalty to ${this.teamName(att)}`, "#fbbf24");
+      const why = reasons[Math.floor(this.rng() * reasons.length)];
+      this.say(why, `Penalty to ${this.teamName(att)}`, "#fbbf24");
+      const offender = ruckOffender(def);
+      // Defending inside their own 10m is the cynical-play zone.
+      const nearLine = this.fx(att, r.x) > 100;
       this.scheduleRestart("penalty", att, r.x, r.y);
+      this.judgeInfringement(offender, def, why.toLowerCase(), nearLine);
       return;
     }
     if (roll < 0.08) {
       const reasons = ["Holding on", "Sealing off"];
-      this.say(reasons[Math.floor(this.rng() * reasons.length)], `Penalty to ${this.teamName(def)}`, "#fbbf24");
+      const why = reasons[Math.floor(this.rng() * reasons.length)];
+      this.say(why, `Penalty to ${this.teamName(def)}`, "#fbbf24");
+      const offender = ruckOffender(att);
       this.scheduleRestart("penalty", def, r.x, r.y);
+      this.judgeInfringement(offender, att, why.toLowerCase(), false);
       return;
     }
     let pRetain = 0.85 + 0.08 * (a - d);
@@ -2309,6 +2519,10 @@ export class RugbyEngine {
       const pen: TeamIndex = this.rng() < 0.5 + diff * 0.01 ? att : def;
       this.say("SCRUM PENALTY", `Collapsed scrum – penalty to ${this.teamName(pen)}`, "#fbbf24");
       this.scheduleRestart("penalty", pen, r.x, r.y);
+      // A prop from the penalised side takes the blame; collapsing near the line can be carded.
+      const guilty = other(pen);
+      const prop = this.pl(guilty, this.rng() < 0.5 ? 1 : 3);
+      this.judgeInfringement(prop, guilty, "collapsing the scrum", this.fx(pen, r.x) > 100);
       return;
     }
     const pWin = clamp(0.86 + diff * 0.004, 0.6, 0.96);
@@ -2475,7 +2689,17 @@ export class RugbyEngine {
       this.place(this.pl(team, n), team, fM - depth, ly(spread));
       this.place(this.pl(def, n), team, fM + depth, ly(spread));
     });
+    // Line players hold a "lift" pose: shoulders down, ready to drive. They are not busy in the
+    // sense that freezes them, because we drive the pose directly here.
     for (const p of this.players) if (p.isOnField) p.busy = 9;
+    for (const n of participants) {
+      this.pl(team, n).anim = "bind";
+      this.pl(def, n).anim = "bind";
+      this.pl(team, n).animUntil = 1e9;
+      this.pl(def, n).animUntil = 1e9;
+    }
+    this.pl(team, 2).anim = "pass";
+    this.pl(team, 2).animUntil = 1e9;
     this.ball.pos = { x: this.wx(team, fM), y: ly(0.7), z: 1 };
   }
 
@@ -2494,6 +2718,11 @@ export class RugbyEngine {
       navCooldown: 0,
       aiTimer: 1.1,
       defenceTarget: (["front", "middle", "back"] as LineoutTarget[])[Math.floor(this.rng() * 3)],
+      action: "waiting",
+      actionTimer: 0,
+      jumperNo: 5,
+      defenderNo: 5,
+      decided: null,
     };
     this.placeLineoutFormation(this.lineout);
     this.ball.carrier = null;
@@ -2571,8 +2800,97 @@ export class RugbyEngine {
       return;
     }
 
-    this.phaseTimer -= dt;
-    if (this.phaseTimer <= 0) this.resolveLineout();
+    if (call.action === "waiting") {
+      // Everyone braces: the jumper rises before the ball is thrown.
+      call.action = "lifting";
+      call.actionTimer = 0.9;
+      this.say("", "");
+    }
+    this.tickLineoutThrow(dt);
+  }
+
+  /**
+   * Play the lineout out properly: jumpers lift (0.9s), the hooker throws to the target,
+   * the ball travels, and only then is the contest resolved. Before this the ball was
+   * teleporting to the scrum-half, which made the set piece look broken.
+   */
+  private tickLineoutThrow(dt: number): void {
+    const call = this.lineout;
+    if (!call) return;
+    const r = this.restart;
+    if (!r) return;
+    const att = r.team;
+    const def = other(att);
+    const participants = this.lineoutParticipants(call.numbers);
+    const preferred = call.target === "front" ? 4 : call.target === "middle" ? 5 : 8;
+    const jumperNo = participants.includes(preferred) ? preferred : participants[Math.floor((participants.length - 1) / 2)];
+    call.jumperNo = jumperNo;
+    call.defenderNo = jumperNo;
+
+    if (call.action === "lifting") {
+      call.actionTimer -= dt;
+      // Jumper rises: lean back and lift, driven straight off the timer.
+      const jumper = this.pl(att, jumperNo);
+      const defender = this.pl(def, jumperNo);
+      const k = clamp(1 - call.actionTimer / 0.9, 0, 1);
+      for (const p of [jumper, defender]) {
+        p.anim = k > 0.55 ? "bind" : "none";
+        p.animUntil = 1e9;
+      }
+      if (call.actionTimer <= 0) {
+        call.action = "throwing";
+        call.actionTimer = 0;
+        // Unfreeze everyone: the ball is live, so jumpers must be able to catch and
+        // the rest of the team must be able to react to what happens.
+        for (const p of this.players) if (p.isOnField) p.busy = 0;
+        // Throw the ball along the touchline to the target jumper.
+        const inward = r.y === 0 ? 1 : -1;
+        const ty = r.y + inward * (6.5 + participants.indexOf(jumperNo) * 1.75);
+        const tx = r.x - this.teams[att].dir * 3.5;
+        const thrower = this.pl(att, 2);
+        const ox = thrower.pos.x;
+        const oy = thrower.pos.y;
+        const dist = Math.max(1, hyp(tx - ox, ty - oy));
+        const speed = clamp(11 + dist * 0.5, 12, 20);
+        const t = dist / speed;
+        const angle = Math.atan2(ty - oy, tx - ox);
+        const b = this.ball;
+        b.pos = { x: ox, y: oy, z: 1 };
+        b.vel = { x: Math.cos(angle) * speed, y: Math.sin(angle) * speed, z: (G) * t / 2 };
+        b.carrier = null;
+        b.flight = "pass";
+        b.receiver = jumper.id;
+        b.target = { x: tx, y: ty };
+        b.lastTeam = att;
+        b.lastPlayer = this.pl(att, 2).id;
+        b.passer = this.pl(att, 2).id;
+        b.passerUntil = this.time + 0.6;
+        b.noCatchUntil = this.time + 0.12;
+        b.kickTeam = null;
+        b.kickKind = null;
+        b.bounced = false;
+        b.goalChecked = true; // not a kick at goal
+        this.pl(att, 2).anim = "pass";
+        this.pl(att, 2).animUntil = this.time + 0.5;
+        this.say("THROWN!", `To the ${call.target}`, "#cbd5e1", 0.8);
+      }
+      return;
+    }
+
+    // Ball in flight: let physics carry it, but only resolve when it actually lands or is caught.
+    if (call.action === "throwing") {
+      // The lineout phase does not otherwise step the ball, so drive it here.
+      this.updateBall(dt);
+      const caught = this.ball.carrier !== null;
+      const onGround = this.ball.pos.z <= 0 && this.ball.bounced;
+      if (caught || onGround) {
+        call.action = "done";
+        call.decided = null;
+        this.resolveLineout();
+      }
+      return;
+    }
+    if (call.action === "done") this.resolveLineout();
   }
 
   private resolveLineout(): void {
@@ -2792,7 +3110,7 @@ export class RugbyEngine {
         const m = gk.meter;
         const kickerInput = gk.team === this.userTeam ? input : gk.team === this.remoteTeam ? remoteInput : null;
         if (m.stage === "power") {
-          m.value += m.dirn * dt * 1.2;
+          m.value += m.dirn * dt * 1.25;
           if (m.value >= 1) { m.value = 1; m.dirn = -1; }
           if (m.value <= 0) { m.value = 0; m.dirn = 1; }
           if (kickerInput?.action) {
@@ -2808,7 +3126,9 @@ export class RugbyEngine {
           if (kickerInput?.action) {
             m.accuracy = m.value;
             m.stage = "done";
-            this.executeGoalKick(m.power, m.accuracy);
+            // Bar runs 0..1 with the posts at the centre; convert to a -1..+1 aim offset.
+            // (Passing the raw 0..1 value pulled every kick to one side – a centred hit missed.)
+            this.executeGoalKick(m.power, (m.accuracy - 0.5) * 2);
           }
         }
       } else {
@@ -2829,12 +3149,25 @@ export class RugbyEngine {
     if (landed || out || (b.goalChecked && gk.timer > 3.5) || gk.timer > 8) this.afterGoalKick(false);
   }
 
+  /**
+   * Half-width of the scoring zone on the accuracy bar (0..0.5), from the real gap between
+   * the posts at this distance. The HUD draws exactly this, so the green zone is truthful.
+   */
+  goalAimWindow(): number {
+    const gk = this.goalKick;
+    if (!gk) return 0.1;
+    // Sized from the real gap between the posts at this distance, with a little margin so
+    // a kick that looks "in the green" on screen always scores.
+    const tol = Math.atan((GOAL_HALF_GAP * 0.95) / Math.max(5, gk.distance));
+    return clamp(tol / (2 * GOAL_AIM), 0.04, 0.4);
+  }
+
   private executeGoalKick(power: number, accOffset: number): void {
     const gk = this.goalKick;
     if (!gk) return;
     const kicker = this.players[gk.kickerId];
     const gx = this.wx(gk.team, 110);
-    const angle = Math.atan2(35 - gk.y, gx - gk.x) + accOffset * 0.2;
+    const angle = Math.atan2(35 - gk.y, gx - gk.x) + accOffset * GOAL_AIM;
     const v = 13 + 17 * clamp(power, 0, 1);
     const b = this.ball;
     b.pos = { x: gk.x, y: gk.y, z: 0.3 };
@@ -2885,7 +3218,7 @@ export class RugbyEngine {
       targetY = 35 + (this.rng() < 0.5 ? -1 : 1) * (3.4 + this.rng() * 4);
     }
     const targetAngle = Math.atan2(targetY - gk.y, gx - gk.x);
-    this.executeGoalKick(power, (targetAngle - baseAngle) / 0.2);
+    this.executeGoalKick(power, (targetAngle - baseAngle) / GOAL_AIM);
   }
 
   private afterGoalKick(success: boolean): void {
@@ -2979,8 +3312,10 @@ export class RugbyEngine {
       if (!b.bounced && !b.kickFrom22 && b.kickKind !== "dropout") {
         markX = b.kickFromX;
         this.say("Out on the full", "Lineout back where it was kicked from");
+        this.pushReview("OUT ON THE FULL", throwTeam);
       } else {
         this.say("Found touch!", `Lineout to ${this.teamName(throwTeam)}`);
+        this.pushReview("INTO TOUCH", throwTeam);
       }
     } else {
       throwTeam = b.lastTeam !== null ? other(b.lastTeam) : 0;
